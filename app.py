@@ -24,10 +24,7 @@ div[data-testid="stDataFrame"] {border: 1px solid rgba(120,140,170,.2); border-r
 </style>
 """, unsafe_allow_html=True)
 
-st.write(
-    "A simple workspace for exploring orders, products, customers, and stock. "
-    "You do not need SQL or data-analysis experience to use it."
-)
+st.write("Explore company performance, compare periods, investigate products and customers, and inspect the underlying records.")
 
 with st.expander("Start here: what am I looking at?", expanded=True):
     st.markdown(
@@ -44,14 +41,12 @@ with st.expander("Start here: what am I looking at?", expanded=True):
     )
     st.markdown(
         """
-        - **Sample gross sales:** the sum of item price × quantity before the
-          cart-level discounted total is applied. It is not profit.
-        - **Orders:** the number of sample carts in the current filters.
-        - **Units sold:** the total quantity of items across those carts.
-        - **Average order value:** sample gross sales divided by the number of carts.
-        - **Product rating:** the rating supplied by the sample product API.
-        - **Listed stock:** the stock number supplied by the sample product API;
-          it is not a live inventory feed.
+        - **Sales:** the order value recorded in the source data. It is not profit unless product costs and other expenses are included.
+        - **Orders:** the number of orders in the current filters.
+        - **Units:** the total quantity of items across those orders.
+        - **Average order value:** sales divided by the number of orders.
+        - **Product rating:** the rating value supplied by the dataset, when available.
+        - **Stock:** the inventory quantity supplied by the dataset. Check its date and source before treating it as live stock.
         """
     )
 
@@ -300,8 +295,8 @@ high = orders["sample_order_date"].max().date()
 
 st.sidebar.header("Explore the data")
 date_range = st.sidebar.date_input(
-    "Sample date range", value=(low, high), min_value=low, max_value=high,
-    help="These dates are generated for demonstration; they are not actual purchase dates."
+    "Order date range" if not is_sample else "Sample date range", value=(low, high), min_value=low, max_value=high,
+    help="These dates are generated for demonstration, not actual purchase dates." if is_sample else "Filter using the order dates in your uploaded data."
 )
 if isinstance(date_range, (tuple, list)) and len(date_range) == 2:
     start, end = date_range
@@ -371,8 +366,8 @@ if filtered.empty:
     st.info("No orders match those filters. Try widening the date range or removing a filter.")
     st.stop()
 
-overview_tab, products_tab, customers_tab, orders_tab, guide_tab = st.tabs(
-    ["Overview", "Products & stock", "Customers", "Orders", "Metric guide"]
+overview_tab, compare_tab, explore_tab, products_tab, customers_tab, orders_tab, guide_tab = st.tabs(
+    ["Overview", "Compare", "Explore data", "Products", "Customers", "Orders", "Data guide"]
 )
 
 with overview_tab:
@@ -388,7 +383,7 @@ with overview_tab:
     )
     st.plotly_chart(chart, use_container_width=True)
 
-    left, right = st.columns(2)
+    left, right = st.columns([1.15, 0.85], gap="large")
     with left:
         st.subheader("Sales by category")
         category_sales = (
@@ -401,19 +396,125 @@ with overview_tab:
         if not category_sales.empty:
             st.plotly_chart(
                 px.bar(category_sales, x="category", y="sample_sales",
-                       labels={"category": "Category", "sample_sales": "Sample sales"},
+                       labels={"category": "Category", "sample_sales": "Sales"},
                        hover_data=["units"]),
                 use_container_width=True,
             )
         else:
             st.info("No product lines match the selected filters.")
     with right:
-        st.subheader("Order discount summary")
-        st.metric("Difference before and after cart discount", currency(discount_savings))
-        st.caption(
-            "This is the sum of sample cart totals minus sample discounted totals. "
-            "It is not a measure of profit or a verified promotion cost."
-        )
+        st.subheader("Top categories")
+        st.plotly_chart(px.pie(category_sales, names="category", values="sample_sales", hole=0.55, title="Share of sales by category"), use_container_width=True)
+
+
+with compare_tab:
+    st.subheader("Compare two periods")
+    st.caption("Compare sales, order volume, average order value and category mix across two date windows.")
+    default_mid = low + (high - low) // 2
+    ca, cb = st.columns(2)
+    with ca:
+        st.markdown("**Period A**")
+        range_a = st.date_input("Period A", value=(low, default_mid), min_value=low, max_value=high, key="compare_a")
+    with cb:
+        st.markdown("**Period B**")
+        range_b = st.date_input("Period B", value=(default_mid, high), min_value=low, max_value=high, key="compare_b")
+    def slice_period(bounds):
+        if isinstance(bounds, (tuple, list)) and len(bounds) == 2:
+            return filtered[filtered["sample_order_date"].dt.date.between(bounds[0], bounds[1])]
+        return filtered.iloc[0:0]
+    pa, pb = slice_period(range_a), slice_period(range_b)
+    def summarize_period(frame):
+        count = len(frame)
+        total = float(frame["total_amount"].sum())
+        return {"Sales": total, "Orders": count, "Average order value": total / count if count else 0}
+    sa, sb = summarize_period(pa), summarize_period(pb)
+    metric_cols = st.columns(3)
+    for col, metric in zip(metric_cols, sa):
+        change = sb[metric] - sa[metric]
+        pct = (change / abs(sa[metric]) * 100) if sa[metric] else None
+        shown = currency(sb[metric]) if metric != "Orders" else f"{sb[metric]:,.0f}"
+        delta = f"{change:+,.1f} ({pct:+.1f}%)" if pct is not None else f"{change:+,.1f} (no Period A baseline)"
+        col.metric(f"{metric} · Period B", shown, delta=delta)
+    compare_table = pd.DataFrame([{"Metric": key, "Period A": value, "Period B": sb[key]} for key, value in sa.items()])
+    st.dataframe(compare_table, use_container_width=True, hide_index=True)
+    if not pa.empty or not pb.empty:
+        daily = pd.concat([
+            pa.assign(period="Period A"),
+            pb.assign(period="Period B")
+        ])
+        daily["week"] = daily["sample_order_date"].dt.to_period("W").dt.start_time
+        period_trend = daily.groupby(["week", "period"], as_index=False)["total_amount"].sum()
+        st.plotly_chart(px.line(period_trend, x="week", y="total_amount", color="period", markers=True,
+                                title="Weekly sales comparison", labels={"week":"Week","total_amount":"Sales"}), use_container_width=True)
+    else:
+        st.info("Choose date windows that contain orders to compare them.")
+    st.info("Period comparisons reflect the dates and filters in the uploaded data. If the dates are synthetic, the comparison is illustrative only.")
+
+with explore_tab:
+    st.subheader("Build your own analysis")
+    st.caption("Choose what to group by, which measure to calculate, and how to visualize it. The table and chart respond to your selections.")
+    dimension_options = {
+        "Product category": ("category", products, "product_id"),
+        "Product": ("title", products, "product_id"),
+        "Customer city": ("city", customers, "customer_id"),
+        "Customer": ("customer_name", customers, "customer_id"),
+        "Order month": ("month", None, None),
+        "Order weekday": ("weekday", None, None),
+    }
+    e1, e2, e3 = st.columns(3)
+    with e1:
+        dimension_label = st.selectbox("Group results by", list(dimension_options), key="explore_dimension")
+    with e2:
+        measure_label = st.selectbox("Measure", ["Sales", "Orders", "Units", "Average order value"], key="explore_measure")
+    with e3:
+        chart_style = st.selectbox("Chart style", ["Bar", "Line", "Treemap", "Pie"], key="explore_chart")
+    dimension, lookup, join_key = dimension_options[dimension_label]
+    if dimension in {"category", "title"}:
+        explore_base = filtered_items.merge(products[["product_id", dimension]], on="product_id", how="left")
+        explore_base = explore_base.merge(filtered[["order_id", "total_amount"]], on="order_id", how="left")
+        group_col = dimension
+    elif dimension in {"city", "customer_name"}:
+        explore_base = filtered.merge(customers[["customer_id", dimension]], on="customer_id", how="left")
+        explore_base = explore_base.merge(order_items.groupby("order_id", as_index=False).agg(units=("quantity","sum")), on="order_id", how="left")
+        group_col = dimension
+    else:
+        explore_base = filtered.copy()
+        if dimension == "month":
+            explore_base["month"] = explore_base["sample_order_date"].dt.to_period("M").astype(str)
+            group_col = "month"
+        else:
+            explore_base["weekday"] = explore_base["sample_order_date"].dt.day_name()
+            group_col = "weekday"
+    if measure_label == "Sales":
+        value_col, agg_fn = ("line_total", "sum") if dimension in {"category", "title"} else ("total_amount", "sum")
+        if dimension in {"city", "customer_name"}:
+            value_col = "total_amount"
+    elif measure_label == "Orders":
+        value_col, agg_fn = "order_id", "nunique"
+    elif measure_label == "Units":
+        if dimension in {"category", "title"}:
+            value_col, agg_fn = "quantity", "sum"
+        else:
+            if "units" not in explore_base.columns:
+                explore_base = explore_base.merge(order_items.groupby("order_id", as_index=False).agg(units=("quantity","sum")), on="order_id", how="left")
+            value_col, agg_fn = "units", "sum"
+    else:
+        value_col, agg_fn = "total_amount", "mean"
+    result = explore_base.groupby(group_col, dropna=False).agg(value=(value_col, agg_fn)).reset_index().sort_values("value", ascending=False)
+    top_n = st.slider("Number of groups to show", min_value=5, max_value=30, value=min(10, max(5, len(result))), key="explore_top_n")
+    result = result.head(top_n)
+    if chart_style == "Line":
+        fig = px.line(result.sort_values(group_col), x=group_col, y="value", markers=True)
+    elif chart_style == "Treemap":
+        fig = px.treemap(result, path=[group_col], values="value")
+    elif chart_style == "Pie":
+        fig = px.pie(result, names=group_col, values="value", hole=0.35)
+    else:
+        fig = px.bar(result.sort_values("value"), x="value", y=group_col, orientation="h")
+    fig.update_layout(title=f"{measure_label} by {dimension_label.lower()}", margin=dict(l=15,r=15,t=55,b=15))
+    st.plotly_chart(fig, use_container_width=True)
+    st.dataframe(result.rename(columns={group_col: dimension_label, "value": measure_label}), use_container_width=True, hide_index=True)
+    st.download_button("Download this analysis (CSV)", result.to_csv(index=False).encode("utf-8"), "custom_analysis.csv", "text/csv")
 
 with products_tab:
     st.subheader("Product performance")
@@ -433,7 +534,7 @@ with products_tab:
             px.bar(
                 product_summary.head(10).sort_values("sample_sales"),
                 x="sample_sales", y="title", orientation="h",
-                labels={"sample_sales": "Sample sales", "title": "Product"},
+                labels={"sample_sales": "Sales", "title": "Product"},
                 hover_data=["category", "units_sold", "order_count"],
             ),
             use_container_width=True,
@@ -476,7 +577,7 @@ with customers_tab:
         customer_summary[["customer_name", "city", "order_count", "units", "sample_sales"]],
         use_container_width=True, hide_index=True,
         column_config={
-            "sample_sales": st.column_config.NumberColumn("Sample sales", format="$%.2f"),
+            "sample_sales": st.column_config.NumberColumn("Sales", format="$%.2f"),
             "order_count": st.column_config.NumberColumn("Orders", format="%d"),
             "units": st.column_config.NumberColumn("Units", format="%d"),
         },
@@ -495,31 +596,34 @@ with orders_tab:
         display_orders,
         use_container_width=True, hide_index=True,
         column_config={
-            "total_amount": st.column_config.NumberColumn("Sample order amount", format="$%.2f"),
-            "discounted_total": st.column_config.NumberColumn("Sample discounted total", format="$%.2f"),
-            "sample_order_date": st.column_config.DateColumn("Generated sample date"),
+            "total_amount": st.column_config.NumberColumn("Order amount", format="$%.2f"),
+            "discounted_total": st.column_config.NumberColumn("Discounted total", format="$%.2f"),
+            "sample_order_date": st.column_config.DateColumn("Order date"),
         },
     )
     st.download_button(
         "Download filtered orders (CSV)",
         display_orders.to_csv(index=False).encode("utf-8"),
-        "sample_orders.csv", "text/csv",
+        "filtered_orders.csv", "text/csv",
     )
 
 with guide_tab:
-    st.subheader("Metric guide")
+    st.subheader("Data coverage and metric guide")
+    coverage = pd.DataFrame([{"Business area":"Sales","Available":"Orders and order totals","Limit":"Revenue recognition, taxes, payment status and refunds may be absent"},{"Business area":"Products","Available":"Product names, categories, item prices and quantities","Limit":"Cost, margin, supplier and product lifecycle may be absent"},{"Business area":"Customers","Available":"Customer IDs, names and locations when supplied","Limit":"Acquisition channel, consent, demographics and lifetime history may be absent"},{"Business area":"Marketing","Available":"Campaign fields only if uploaded","Limit":"Ad spend, attribution and conversion tracking are not inferred"},{"Business area":"Operations","Available":"Order dates and item quantities","Limit":"Fulfillment, shipping, delivery, returns and service levels need source data"},{"Business area":"Finance","Available":"Sales totals","Limit":"COGS, operating expenses, cash flow and profit cannot be calculated without costs"}])
+    st.dataframe(coverage, use_container_width=True, hide_index=True)
+    st.markdown("**Metrics and definitions**")
     st.markdown(
         """
         | Term | What it means | What it does not tell you |
         |---|---|---|
-        | Sample gross sales | Sum of item prices multiplied by quantities | Profit, cash received, or verified revenue |
-        | Orders | Number of sample carts | Number of completed or paid purchases |
+        | Sales | Order total or item sales, depending on the selected view | Profit, cash received, or verified revenue |
+        | Orders | Number of distinct orders | Number of completed or paid purchases unless status is supplied |
         | Units | Total quantity in the carts | Number of unique products |
-        | Average order | Sample gross sales divided by cart count | What a real customer typically spends |
-        | Sample sales by product | Sum of item line totals for a product | Product profit or margin |
-        | Listed stock | Stock value in the sample product feed | Live warehouse availability |
-        | Product rating | Rating value from the sample API | A verified review analysis |
-        | Discount difference | Cart total minus discounted cart total | Actual promotion cost or margin impact |
+        | Average order value | Sales divided by distinct orders | What a real customer typically spends if the source is incomplete |
+        | Sales by product | Sum of item line totals for a product | Product profit or margin |
+        | Stock | Stock quantity in the source data | Live warehouse availability unless refreshed |
+        | Product rating | Rating value from the source | A verified review analysis |
+        | Discount difference | Order total minus discounted total when supplied | Actual promotion cost or margin impact |
         """
     )
     st.info(
@@ -529,7 +633,4 @@ with guide_tab:
     )
 
 st.divider()
-st.caption(
-    "Built as a learning and portfolio demo using DummyJSON sample data. "
-    "The generated dates and sample values should not be treated as real company performance."
-)
+st.caption("Built with Python, DuckDB, pandas, Plotly and Streamlit. Results depend on the completeness and accuracy of the uploaded dataset.")
