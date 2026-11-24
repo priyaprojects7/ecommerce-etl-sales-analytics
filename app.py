@@ -1,5 +1,6 @@
 """Plain-language e-commerce sample sales and product workspace."""
 from pathlib import Path
+from io import BytesIO
 
 import duckdb
 import pandas as pd
