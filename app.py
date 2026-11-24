@@ -89,7 +89,7 @@ with right:
     product_sales = (
         filtered_items.groupby("product_id", as_index=False)
         .agg(units_sold=("quantity", "sum"), gross_sales=("line_total", "sum"))
-        .merge(products[["id", "title", "category"]], left_on="product_id", right_on="id")
+        .merge(products[["product_id", "title", "category"]], on="product_id", how="left")
         .sort_values("gross_sales", ascending=False)
         .head(10)
     )
