@@ -79,6 +79,8 @@ export default function Home() {
   const [active,setActive] = useState("Overview");
   const [range,setRange] = useState("12 months");
   const [category,setCategory] = useState("All categories");
+  const [statusFilter,setStatusFilter] = useState("All statuses");
+  const [filtersOpen,setFiltersOpen] = useState(false);
   const [search,setSearch] = useState("");
   const [notice,setNotice] = useState("");
   const [sidebarOpen,setSidebarOpen] = useState(true);
@@ -105,8 +107,9 @@ export default function Home() {
     if(range==="6 months") cutoff.setMonth(cutoff.getMonth()-6);
     if(range==="12 months") cutoff.setMonth(cutoff.getMonth()-12);
     return rows.filter(r=>(range==="All time" || r.date>=cutoff) && (category==="All categories" || r.category===category) &&
+      (statusFilter==="All statuses" || r.status===statusFilter) &&
       (!search || [r.id,r.customer,r.product,r.city].join(" ").toLowerCase().includes(search.toLowerCase())));
-  },[rows,range,category,search,maxDate]);
+  },[rows,range,category,statusFilter,search,maxDate]);
   const totalSales = filtered.reduce((a,r)=>a+r.sales,0);
   const totalOrders = new Set(filtered.map(r=>r.id)).size;
   const units = filtered.reduce((a,r)=>a+r.qty,0);
@@ -231,7 +234,8 @@ export default function Home() {
           <div className="heading-actions"><button className="secondary-btn" onClick={()=>fileRef.current?.click()}><Upload size={15}/> Upload data</button><input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,.json" hidden onChange={e=>handleUpload(e.target.files?.[0])}/><button className="primary-btn" onClick={exportRows}><Download size={15}/> Export view</button></div>
         </div>
         {notice&&<div className="notice"><span>{notice}</span><button onClick={()=>setNotice("")}><X size={14}/></button></div>}
-        <div className="toolbar"><div className="dataset-label"><span className="file-icon"><FileSpreadsheet size={16}/></span><span><b>{dataset}</b><small>{rows.length.toLocaleString()} rows · {categories.length} categories</small></span><span className="connected">● Connected</span></div><div className="toolbar-right"><span className="muted-label"><CalendarDays size={14}/> Period</span><select value={range} onChange={e=>setRange(e.target.value)}><option>All time</option><option>12 months</option><option>6 months</option><option>90 days</option><option>30 days</option></select><select value={category} onChange={e=>setCategory(e.target.value)}><option>All categories</option>{categories.map(c=><option key={c}>{c}</option>)}</select><button className="filter-btn"><Filter size={15}/> Filters</button></div></div>
+        <div className="toolbar"><div className="dataset-label"><span className="file-icon"><FileSpreadsheet size={16}/></span><span><b>{dataset}</b><small>{rows.length.toLocaleString()} rows · {categories.length} categories</small></span><span className="connected">● Connected</span></div><div className="toolbar-right"><span className="muted-label"><CalendarDays size={14}/> Period</span><select value={range} onChange={e=>setRange(e.target.value)}><option>All time</option><option>12 months</option><option>6 months</option><option>90 days</option><option>30 days</option></select><select value={category} onChange={e=>setCategory(e.target.value)}><option>All categories</option>{categories.map(c=><option key={c}>{c}</option>)}</select><button className="filter-btn" onClick={()=>setFiltersOpen(v=>!v)} aria-expanded={filtersOpen}><Filter size={15}/> Filters <ChevronDown size={13}/></button></div></div>
+        {filtersOpen&&<div className="filter-popover"><label>Order status<select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option>All statuses</option>{[...new Set(rows.map(r=>r.status))].sort().map(v=><option key={v}>{v}</option>)}</select></label><button className="secondary-btn compact" onClick={()=>{setStatusFilter("All statuses");setCategory("All categories");setSearch("");setRange("All time");}}>Clear filters</button><button className="text-btn" onClick={()=>setFiltersOpen(false)}>Done</button></div>}
         <div className="section-line"><span>PERFORMANCE SNAPSHOT</span><span className="updated">Updated just now <span>·</span> Live filters</span></div>
         <div className="kpi-grid">
           <Kpi title="Total sales" value={shortMoney(totalSales)} change="+12.8%" positive note="vs. previous period" icon={Wallet} tint="violet" spark={[24,32,28,42,37,55,49,68,63,78]}/>
