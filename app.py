@@ -213,6 +213,9 @@ if uploaded_tables is None:
 else:
     st.caption("Showing your uploaded dataset. Files are used in this browser session and are not saved to the repository.")
 
+is_sample = uploaded_tables is None
+sales_label = "Sample gross sales" if is_sample else "Sales total"
+
 if orders.empty:
     st.info("No sample carts were returned by the source.")
     st.stop()
