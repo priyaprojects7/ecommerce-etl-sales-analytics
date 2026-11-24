@@ -81,10 +81,10 @@ export default function Home() {
   const [category,setCategory] = useState("All categories");
   const [search,setSearch] = useState("");
   const [notice,setNotice] = useState("");
-  const [sidebarOpen,setSidebarOpen] = useState(true);\n  const [chatOpen,setChatOpen] = useState(false);\n  const [chatInput,setChatInput] = useState("");\n  const [chatBusy,setChatBusy] = useState(false);\n  const [chatHistory,setChatHistory] = useState<any[]>([]);\n  const [chatChart,setChatChart] = useState<any>(null);
+  const [sidebarOpen,setSidebarOpen] = useState(true);\n  const [chatOpen,setChatOpen] = useState(false);\n  const [chatInput,setChatInput] = useState("");\n  const [chatBusy,setChatBusy] = useState(false);\n  const [chatHistory,setChatHistory] = useState<any[]>([]);\n  const [chatHistoryLoaded,setChatHistoryLoaded] = useState(false);\n  const [chatChart,setChatChart] = useState<any>(null);
   const [whatIf,setWhatIf] = useState(8);
   const [metric,setMetric] = useState("Sales");
-  const fileRef = useRef<HTMLInputElement>(null);\n  const chatEndRef = useRef<HTMLDivElement>(null);\n  useEffect(()=>{ try { const saved=localStorage.getItem("pulse-chat-history-v1"); if(saved) setChatHistory(JSON.parse(saved)); } catch {} },[]);\n  useEffect(()=>{ try { localStorage.setItem("pulse-chat-history-v1",JSON.stringify(chatHistory)); } catch {} },[chatHistory]);\n  useEffect(()=>{ chatEndRef.current?.scrollIntoView({behavior:"smooth"}); },[chatHistory,chatBusy]);
+  const fileRef = useRef<HTMLInputElement>(null);\n  const chatEndRef = useRef<HTMLDivElement>(null);\n  useEffect(()=>{ try { const saved=localStorage.getItem("pulse-chat-history-v1"); if(saved) setChatHistory(JSON.parse(saved)); } catch {} finally { setChatHistoryLoaded(true); } },[]);\n  useEffect(()=>{ if(chatHistoryLoaded) { try { localStorage.setItem("pulse-chat-history-v1",JSON.stringify(chatHistory)); } catch {} } },[chatHistory,chatHistoryLoaded]);\n  useEffect(()=>{ chatEndRef.current?.scrollIntoView({behavior:"smooth"}); },[chatHistory,chatBusy]);
 
   const minDate = useMemo(()=>rows.reduce((m,r)=>r.date<m?r.date:m, rows[0]?.date ?? new Date()),[rows]);
   const maxDate = useMemo(()=>rows.reduce((m,r)=>r.date>m?r.date:m, rows[0]?.date ?? new Date()),[rows]);
