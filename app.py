@@ -41,18 +41,143 @@ with st.expander("Start here: what am I looking at?", expanded=True):
         """
     )
 
+def read_table(file):
+    """Read an uploaded CSV or Excel sheet into a dataframe."""
+    if file is None:
+        return None
+    suffix = Path(file.name).suffix.lower()
+    if suffix == ".csv":
+        return pd.read_csv(file)
+    if suffix in {".xlsx", ".xls"}:
+        return pd.read_excel(file)
+    raise ValueError("Upload a CSV or Excel file.")
+
+
+def normalize_uploads(uploaded):
+    """Validate uploaded tables and standardize the columns used by this app."""
+    required = {
+        "orders": {"order_id", "customer_id", "sample_order_date", "total_amount"},
+        "order_items": {"order_id", "product_id", "quantity", "unit_price"},
+        "products": {"product_id", "title", "category", "price", "stock", "rating"},
+        "customers": {"customer_id", "customer_name", "city"},
+    }
+    cleaned = {}
+    for name, frame in uploaded.items():
+        if frame is None:
+            raise ValueError(f"Missing required {name} table.")
+        frame = frame.copy()
+        frame.columns = [str(col).strip().lower().replace(" ", "_") for col in frame.columns]
+        missing = required[name] - set(frame.columns)
+        if missing:
+            raise ValueError(f"{name}: missing required columns: {', '.join(sorted(missing))}")
+        cleaned[name] = frame
+
+    orders = cleaned["orders"]
+    orders["sample_order_date"] = pd.to_datetime(orders["sample_order_date"], errors="coerce")
+    if orders["sample_order_date"].isna().any():
+        raise ValueError("orders.sample_order_date contains blank or invalid dates.")
+    for col in ("order_id", "customer_id", "total_amount"):
+        orders[col] = pd.to_numeric(orders[col], errors="coerce")
+    if orders[["order_id", "customer_id", "total_amount"]].isna().any().any():
+        raise ValueError("Orders contain blank or non-numeric IDs or totals.")
+    if orders["order_id"].duplicated().any():
+        raise ValueError("orders.order_id must be unique.")
+    if (orders["total_amount"] < 0).any():
+        raise ValueError("Order totals cannot be negative.")
+    if "total_quantity" not in orders.columns:
+        orders["total_quantity"] = 0
+
+    items = cleaned["order_items"]
+    for col in ("order_id", "product_id", "quantity", "unit_price"):
+        items[col] = pd.to_numeric(items[col], errors="coerce")
+    if items[["order_id", "product_id", "quantity", "unit_price"]].isna().any().any():
+        raise ValueError("Order items contain blank or non-numeric required values.")
+    if (items["quantity"] <= 0).any() or (items["unit_price"] < 0).any():
+        raise ValueError("Order item quantities must be positive and prices cannot be negative.")
+    if "line_total" not in items.columns:
+        items["line_total"] = items["quantity"] * items["unit_price"]
+    if "discount_percentage" not in items.columns:
+        items["discount_percentage"] = 0
+    if "discounted_total" not in orders.columns:
+        orders["discounted_total"] = orders["total_amount"]
+    if "source_reported_total" not in orders.columns:
+        orders["source_reported_total"] = orders["total_amount"]
+
+    products = cleaned["products"]
+    for col in ("product_id", "price", "stock", "rating"):
+        products[col] = pd.to_numeric(products[col], errors="coerce")
+    customers = cleaned["customers"]
+    customers["customer_id"] = pd.to_numeric(customers["customer_id"], errors="coerce")
+    if products["product_id"].isna().any() or customers["customer_id"].isna().any():
+        raise ValueError("Product and customer IDs must be numeric and non-empty.")
+    if "brand" not in products.columns:
+        products["brand"] = "Unknown"
+    if not set(items["order_id"]).issubset(set(orders["order_id"])):
+        raise ValueError("Some order items refer to orders that are missing.")
+    if not set(items["product_id"]).issubset(set(products["product_id"])):
+        raise ValueError("Some order items refer to products that are missing.")
+    if not set(orders["customer_id"]).issubset(set(customers["customer_id"])):
+        raise ValueError("Some orders refer to customers that are missing.")
+    if "total_quantity" not in orders.columns or (orders["total_quantity"] == 0).all():
+        quantities = items.groupby("order_id")["quantity"].sum()
+        orders["total_quantity"] = orders["order_id"].map(quantities).fillna(0)
+    orders["total_amount"] = pd.to_numeric(orders["total_amount"])
+    orders["sample_order_date"] = pd.to_datetime(orders["sample_order_date"])
+    return orders, items, products, customers
+
+
+st.sidebar.header("Use your own data")
+st.sidebar.caption("Upload one Excel workbook with four sheets, or four separate CSV files.")
+workbook = st.sidebar.file_uploader("Excel workbook (.xlsx)", type=["xlsx"], key="workbook_upload")
+with st.sidebar.expander("Or upload four CSV files"):
+    orders_file = st.file_uploader("Orders CSV", type=["csv"], key="orders_upload")
+    items_file = st.file_uploader("Order items CSV", type=["csv"], key="items_upload")
+    products_file = st.file_uploader("Products CSV", type=["csv"], key="products_upload")
+    customers_file = st.file_uploader("Customers CSV", type=["csv"], key="customers_upload")
+
+uploaded_tables = None
+try:
+    if workbook is not None:
+        excel = pd.ExcelFile(workbook)
+        required_sheets = ["orders", "order_items", "products", "customers"]
+        missing_sheets = set(required_sheets) - set(excel.sheet_names)
+        if missing_sheets:
+            raise ValueError("Workbook is missing sheets: " + ", ".join(sorted(missing_sheets)))
+        uploaded_tables = {
+            name: pd.read_excel(excel, sheet_name=name) for name in required_sheets
+        }
+    elif any(file is not None for file in (orders_file, items_file, products_file, customers_file)):
+        uploaded_tables = {
+            "orders": read_table(orders_file),
+            "order_items": read_table(items_file),
+            "products": read_table(products_file),
+            "customers": read_table(customers_file),
+        }
+    if uploaded_tables is not None:
+        orders, order_items, products, customers = normalize_uploads(uploaded_tables)
+        st.sidebar.success("Your dataset is loaded for this session.")
+    else:
+        orders = order_items = products = customers = None
+except Exception as exc:
+    st.sidebar.error(f"Upload could not be used: {exc}")
+    st.stop()
+
 if not Path(DATABASE_PATH).exists():
     st.warning("Warehouse not found. Run `python -m src.pipeline` in the project terminal first.")
     st.stop()
 
-con = duckdb.connect(str(DATABASE_PATH), read_only=True)
-try:
-    orders = con.execute("SELECT * FROM orders").df()
-    order_items = con.execute("SELECT * FROM order_items").df()
-    products = con.execute("SELECT * FROM products").df()
-    customers = con.execute("SELECT * FROM customers").df()
-finally:
-    con.close()
+if uploaded_tables is None:
+    con = duckdb.connect(str(DATABASE_PATH), read_only=True)
+    try:
+        orders = con.execute("SELECT * FROM orders").df()
+        order_items = con.execute("SELECT * FROM order_items").df()
+        products = con.execute("SELECT * FROM products").df()
+        customers = con.execute("SELECT * FROM customers").df()
+    finally:
+        con.close()
+    st.caption("Showing the built-in DummyJSON demo dataset. Upload your own files in the sidebar to switch datasets.")
+else:
+    st.caption("Showing your uploaded dataset. Files are used in this browser session and are not saved to the repository.")
 
 if orders.empty:
     st.info("No sample carts were returned by the source.")
