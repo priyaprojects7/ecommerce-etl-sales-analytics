@@ -56,15 +56,23 @@ with st.expander("Start here: what am I looking at?", expanded=True):
     )
 
 def read_table(file):
-    """Read an uploaded CSV or Excel sheet into a dataframe."""
+    """Read supported tabular formats into a dataframe or workbook tables."""
     if file is None:
         return None
     suffix = Path(file.name).suffix.lower()
     if suffix == ".csv":
         return pd.read_csv(file)
     if suffix in {".xlsx", ".xls"}:
-        return pd.read_excel(file)
-    raise ValueError("Upload a CSV or Excel file.")
+        excel = pd.ExcelFile(file)
+        required_sheets = ["orders", "order_items", "products", "customers"]
+        if set(required_sheets).issubset(set(excel.sheet_names)):
+            return {name: pd.read_excel(excel, sheet_name=name) for name in required_sheets}
+        return pd.read_excel(excel, sheet_name=excel.sheet_names[0])
+    if suffix == ".json":
+        return pd.read_json(file)
+    if suffix == ".parquet":
+        return pd.read_parquet(file)
+    raise ValueError("Supported formats: CSV, XLSX, XLS, JSON, and Parquet.")
 
 
 def normalize_single_csv(frame):
@@ -106,6 +114,53 @@ def normalize_single_csv(frame):
         frame["city"] = "Unknown"
     if "brand" not in frame.columns:
         frame["brand"] = "Unknown"
+    orders = frame[["order_id", "customer_id", "sample_order_date", "total_amount"]].drop_duplicates("order_id").copy()
+    items = frame[["order_id", "product_id", "quantity", "unit_price", "line_total"]].copy()
+    products = frame[["product_id", "title", "category", "price", "stock", "rating", "brand"]].drop_duplicates("product_id").copy()
+    customers = frame[["customer_id", "customer_name", "city"]].drop_duplicates("customer_id").copy()
+    return {"orders": orders, "order_items": items, "products": products, "customers": customers}
+
+
+
+def normalize_walmart_csv(frame):
+    """Adapt the common public Walmart sales CSV layout to dashboard tables."""
+    frame = frame.copy()
+    frame.columns = [str(col).strip().lower().replace(" ", "_") for col in frame.columns]
+    aliases = {
+        "invoice_id": "order_id",
+        "product_line": "title",
+        "unit_price": "unit_price",
+        "quantity": "quantity",
+        "date": "sample_order_date",
+        "city": "city",
+        "rating": "rating",
+        "total": "total_amount",
+    }
+    frame = frame.rename(columns={k: v for k, v in aliases.items() if k in frame.columns and v not in frame.columns})
+    needed = {"order_id", "title", "unit_price", "quantity", "sample_order_date", "total_amount", "city"}
+    missing = needed - set(frame.columns)
+    if missing:
+        raise ValueError(
+            "This file does not match the supported flat order-line or Walmart sales layouts. "
+            "Missing columns: " + ", ".join(sorted(missing))
+        )
+    if "customer_id" not in frame.columns:
+        frame["customer_id"] = pd.factorize(frame["order_id"].astype(str))[0] + 1
+    if "product_id" not in frame.columns:
+        frame["product_id"] = pd.factorize(frame["title"].astype(str))[0] + 1
+    if "category" not in frame.columns:
+        frame["category"] = frame["title"].astype(str)
+    if "price" not in frame.columns:
+        frame["price"] = frame["unit_price"]
+    if "stock" not in frame.columns:
+        frame["stock"] = 0
+    if "rating" not in frame.columns:
+        frame["rating"] = 0
+    if "customer_name" not in frame.columns:
+        frame["customer_name"] = "Customer " + frame["customer_id"].astype(str)
+    if "brand" not in frame.columns:
+        frame["brand"] = "Unknown"
+    frame["line_total"] = pd.to_numeric(frame["unit_price"], errors="coerce") * pd.to_numeric(frame["quantity"], errors="coerce")
     orders = frame[["order_id", "customer_id", "sample_order_date", "total_amount"]].drop_duplicates("order_id").copy()
     items = frame[["order_id", "product_id", "quantity", "unit_price", "line_total"]].copy()
     products = frame[["product_id", "title", "category", "price", "stock", "rating", "brand"]].drop_duplicates("product_id").copy()
@@ -189,58 +244,34 @@ def normalize_uploads(uploaded):
 
 
 st.sidebar.header("Use your own data")
-st.sidebar.caption("Upload one Excel workbook with four sheets, or four separate CSV files.")
-st.sidebar.markdown("**Need a template?**")
-template_tables = {
-    "orders": pd.DataFrame(columns=["order_id", "customer_id", "order_date", "total_amount", "total_quantity"]),
-    "order_items": pd.DataFrame(columns=["order_id", "product_id", "quantity", "unit_price", "line_total", "discount_percentage"]),
-    "products": pd.DataFrame(columns=["product_id", "title", "category", "price", "stock", "rating", "brand"]),
-    "customers": pd.DataFrame(columns=["customer_id", "customer_name", "city"]),
-}
-template_buffer = BytesIO()
-with pd.ExcelWriter(template_buffer, engine="openpyxl") as writer:
-    for sheet_name, template_frame in template_tables.items():
-        template_frame.to_excel(writer, sheet_name=sheet_name, index=False)
+st.sidebar.caption("Upload one data file. Supported formats: CSV, Excel, JSON, and Parquet.")
 st.sidebar.download_button(
-    "Download Excel upload template", template_buffer.getvalue(),
-    "ecommerce_upload_template.xlsx",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "Download sample CSV dataset",
+    data=Path("data/sample_upload.csv").read_bytes() if Path("data/sample_upload.csv").exists() else b"",
+    file_name="ecommerce_sample_upload.csv",
+    mime="text/csv",
+    disabled=not Path("data/sample_upload.csv").exists(),
     use_container_width=True,
 )
-
-workbook = st.sidebar.file_uploader("Excel workbook (.xlsx)", type=["xlsx"], key="workbook_upload")
-st.sidebar.markdown("**Or upload one combined CSV**")
-single_csv = st.sidebar.file_uploader("Combined order-line CSV", type=["csv"], key="single_csv_upload")
-st.sidebar.caption("One row per product in an order. Required columns: order_id, customer_id, order_date, product_id, quantity, unit_price, title, category.")
-st.sidebar.markdown("**Or upload four separate CSV files**")
-orders_file = st.sidebar.file_uploader("Orders CSV", type=["csv"], key="orders_upload")
-items_file = st.sidebar.file_uploader("Order items CSV", type=["csv"], key="items_upload")
-products_file = st.sidebar.file_uploader("Products CSV", type=["csv"], key="products_upload")
-customers_file = st.sidebar.file_uploader("Customers CSV", type=["csv"], key="customers_upload")
-
+data_file = st.sidebar.file_uploader(
+    "Choose a dataset",
+    type=["csv", "xlsx", "xls", "json", "parquet"],
+    key="dataset_upload",
+)
 uploaded_tables = None
 try:
-    if workbook is not None:
-        excel = pd.ExcelFile(workbook)
-        required_sheets = ["orders", "order_items", "products", "customers"]
-        missing_sheets = set(required_sheets) - set(excel.sheet_names)
-        if missing_sheets:
-            raise ValueError("Workbook is missing sheets: " + ", ".join(sorted(missing_sheets)))
-        uploaded_tables = {
-            name: pd.read_excel(excel, sheet_name=name) for name in required_sheets
-        }
-    elif single_csv is not None:
-        uploaded_tables = normalize_single_csv(read_table(single_csv))
-    elif any(file is not None for file in (orders_file, items_file, products_file, customers_file)):
-        uploaded_tables = {
-            "orders": read_table(orders_file),
-            "order_items": read_table(items_file),
-            "products": read_table(products_file),
-            "customers": read_table(customers_file),
-        }
-    if uploaded_tables is not None:
+    if data_file is not None:
+        raw_data = read_table(data_file)
+        if isinstance(raw_data, dict):
+            uploaded_tables = raw_data
+        else:
+            normalized_columns = {str(col).strip().lower().replace(" ", "_") for col in raw_data.columns}
+            if {"invoice_id", "product_line", "unit_price", "quantity", "date", "total", "city"}.issubset(normalized_columns):
+                uploaded_tables = normalize_walmart_csv(raw_data)
+            else:
+                uploaded_tables = normalize_single_csv(raw_data)
         orders, order_items, products, customers = normalize_uploads(uploaded_tables)
-        st.sidebar.success("Your dataset is loaded for this session.")
+        st.sidebar.success(f"Loaded {len(orders):,} orders from {data_file.name}.")
     else:
         orders = order_items = products = customers = None
 except Exception as exc:
