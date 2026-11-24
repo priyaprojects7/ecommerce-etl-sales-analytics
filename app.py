@@ -245,14 +245,6 @@ def normalize_uploads(uploaded):
 
 st.sidebar.header("Use your own data")
 st.sidebar.caption("Upload one data file. Supported formats: CSV, Excel, JSON, and Parquet.")
-st.sidebar.download_button(
-    "Download sample CSV dataset",
-    data=Path("data/sample_upload.csv").read_bytes() if Path("data/sample_upload.csv").exists() else b"",
-    file_name="ecommerce_sample_upload.csv",
-    mime="text/csv",
-    disabled=not Path("data/sample_upload.csv").exists(),
-    use_container_width=True,
-)
 data_file = st.sidebar.file_uploader(
     "Choose a dataset",
     type=["csv", "xlsx", "xls", "json", "parquet"],
