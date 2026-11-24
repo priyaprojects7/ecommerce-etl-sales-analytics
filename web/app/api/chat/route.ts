@@ -7,30 +7,26 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const question = String(body.question || "").trim();
-    const rows = Array.isArray(body.rows) ? body.rows.slice(0, 250) : [];
-    if (!question) return NextResponse.json({ error: "Enter a question first." }, { status: 400 });
-    if (!rows.length) return NextResponse.json({ error: "There are no rows in the current filters. Adjust the filters or upload data first." }, { status: 400 });
+    const rows = Array.isArray(body.rows) ? body.rows.slice(0, 100) : [];
+    const analysis = body.analysis && typeof body.analysis === "object" ? body.analysis : null;
 
-    const totals = rows.reduce((a: any, r: any) => {
-      a.sales += Number(r.sales) || 0;
-      a.units += Number(r.quantity) || 0;
-      a.orders.add(String(r.order_id));
-      a.categories.add(String(r.category || "Unspecified"));
-      a.cities.add(String(r.city || "Unspecified"));
-      a.products.add(String(r.product || "Unspecified"));
-      return a;
-    }, { sales: 0, units: 0, orders: new Set<string>(), categories: new Set<string>(), cities: new Set<string>(), products: new Set<string>() });
+    if (!question) return NextResponse.json({ error: "Enter a question first." }, { status: 400 });
+    if (!analysis || !Number.isFinite(Number(analysis.records)) || Number(analysis.records) < 1) {
+      return NextResponse.json({ error: "There are no records in the current filters. Choose All time or adjust the filters." }, { status: 400 });
+    }
 
     const summary = {
       dataset: String(body.dataset || "Uploaded dataset"),
-      records_in_context: rows.length,
-      distinct_orders: totals.orders.size,
-      sales_sum: Number(totals.sales.toFixed(2)),
-      units_sum: totals.units,
-      categories: [...totals.categories].slice(0, 50),
-      cities: [...totals.cities].slice(0, 50),
-      products: [...totals.products].slice(0, 50),
-      rows
+      scope: "Exact aggregates calculated across every record in the current dashboard filters. The rows array is only a small illustrative sample and must not be used to calculate totals or rankings.",
+      records: Number(analysis.records),
+      distinct_orders: Number(analysis.distinct_orders),
+      distinct_customers: Number(analysis.distinct_customers),
+      distinct_products: Number(analysis.distinct_products),
+      total_sales: Number(analysis.total_sales),
+      total_units: Number(analysis.total_units),
+      total_cost: Number(analysis.total_cost),
+      grouped_results: analysis.groups || {},
+      sample_rows: rows
     };
 
     const apiKey = process.env.OPENAI_API_KEY;
@@ -40,9 +36,9 @@ export async function POST(request: NextRequest) {
       }, { status: 503 });
     }
 
-    const system = `You are PULSE, a careful business data analyst. Answer only from the supplied dataset context. Never invent missing fields, values, causes, or business facts. The data context may be a filtered sample (maximum 250 rows); say so when relevant. If a requested metric cannot be computed from available fields, explain which field is missing. Distinguish sales from profit. Only estimate gross profit if cost values are actually present and meaningful. Return valid JSON only with this exact shape:
+    const system = `You are PULSE, a careful business data analyst. Answer only from the supplied dataset context. The records, totals, distinct counts, and grouped_results are exact aggregates calculated across the entire current filtered dataset. Use grouped_results for rankings, city comparisons, product/category sales, and chart explanations. sample_rows is illustrative only: never use it to calculate totals, rankings, or unique counts. Never invent missing fields, values, causes, or business facts. Distinguish sales from profit; total_cost is only useful if meaningful cost values were supplied. If a requested metric cannot be computed, explain which field is missing. State the record count and current filter scope when useful. Return valid JSON only with this exact shape:
 {"answer":"plain language response with specific numbers and caveats","insight":"one short practical observation or limitation","chart":null}
-If a chart would materially help, chart must be {"title":"short chart title","description":"what the chart shows and any limitation","groupBy":"category|product|customer|city|month","metric":"sales|orders|units|average_order_value"}. Choose only these allowed values. Use chart=null if the question is explanatory or a chart would not help. For questions asking for top/bottom items, choose the appropriate group and metric; chart renders top 10. Do not include markdown fences.`;
+If a chart would materially help, chart must be {"title":"short chart title","description":"what the chart shows and any limitation","groupBy":"category|product|customer|city|month","metric":"sales|orders|units|average_order_value"}. Choose only these allowed values. Use chart=null if the question is explanatory or a chart would not help. For top/bottom questions, choose the matching group and metric. Do not include markdown fences.`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
