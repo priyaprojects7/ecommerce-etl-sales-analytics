@@ -141,6 +141,24 @@ def normalize_uploads(uploaded):
 
 st.sidebar.header("Use your own data")
 st.sidebar.caption("Upload one Excel workbook with four sheets, or four separate CSV files.")
+st.sidebar.markdown("**Need a template?**")
+template_tables = {
+    "orders": pd.DataFrame(columns=["order_id", "customer_id", "order_date", "total_amount", "total_quantity"]),
+    "order_items": pd.DataFrame(columns=["order_id", "product_id", "quantity", "unit_price", "line_total", "discount_percentage"]),
+    "products": pd.DataFrame(columns=["product_id", "title", "category", "price", "stock", "rating", "brand"]),
+    "customers": pd.DataFrame(columns=["customer_id", "customer_name", "city"]),
+}
+template_buffer = BytesIO()
+with pd.ExcelWriter(template_buffer, engine="openpyxl") as writer:
+    for sheet_name, template_frame in template_tables.items():
+        template_frame.to_excel(writer, sheet_name=sheet_name, index=False)
+st.sidebar.download_button(
+    "Download Excel upload template", template_buffer.getvalue(),
+    "ecommerce_upload_template.xlsx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    use_container_width=True,
+)
+
 workbook = st.sidebar.file_uploader("Excel workbook (.xlsx)", type=["xlsx"], key="workbook_upload")
 with st.sidebar.expander("Or upload four CSV files"):
     orders_file = st.file_uploader("Orders CSV", type=["csv"], key="orders_upload")
