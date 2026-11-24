@@ -77,7 +77,7 @@ export default function Home() {
   const [rows,setRows] = useState<Order[]>(demo);
   const [dataset,setDataset] = useState("Demo commerce dataset");
   const [active,setActive] = useState("Overview");
-  const [range,setRange] = useState("12 months");
+  const [range,setRange] = useState("All time");
   const [category,setCategory] = useState("All categories");
   const [statusFilter,setStatusFilter] = useState("All statuses");
   const [filtersOpen,setFiltersOpen] = useState(false);
@@ -151,7 +151,7 @@ export default function Home() {
       } else throw new Error("Use CSV, Excel or JSON for now.");
       const normalized=raw.map(normalizeRow).filter(Boolean) as Order[];
       if(!normalized.length) throw new Error("I couldn't find a sales or total amount column. Try a file with columns such as Sales, Total, Revenue or total_amount.");
-      setRows(normalized);setDataset(file.name);setRange("12 months");setCategory("All categories");setSearch("");
+      setRows(normalized);setDataset(file.name);setRange("All time");setCategory("All categories");setSearch("");
       setNotice("Loaded "+normalized.length.toLocaleString()+" records. Some metrics depend on which columns your file contains.");
     } catch(e:any) {setNotice(e.message||"Could not read this file.");}
   }
