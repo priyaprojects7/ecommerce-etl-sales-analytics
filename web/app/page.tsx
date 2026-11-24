@@ -81,10 +81,20 @@ export default function Home() {
   const [category,setCategory] = useState("All categories");
   const [search,setSearch] = useState("");
   const [notice,setNotice] = useState("");
-  const [sidebarOpen,setSidebarOpen] = useState(true);\n  const [chatOpen,setChatOpen] = useState(false);\n  const [chatInput,setChatInput] = useState("");\n  const [chatBusy,setChatBusy] = useState(false);\n  const [chatHistory,setChatHistory] = useState<any[]>([]);\n  const [chatHistoryLoaded,setChatHistoryLoaded] = useState(false);\n  const [chatChart,setChatChart] = useState<any>(null);
+  const [sidebarOpen,setSidebarOpen] = useState(true);
+  const [chatOpen,setChatOpen] = useState(false);
+  const [chatInput,setChatInput] = useState("");
+  const [chatBusy,setChatBusy] = useState(false);
+  const [chatHistory,setChatHistory] = useState<any[]>([]);
+  const [chatHistoryLoaded,setChatHistoryLoaded] = useState(false);
+  const [chatChart,setChatChart] = useState<any>(null);
   const [whatIf,setWhatIf] = useState(8);
   const [metric,setMetric] = useState("Sales");
-  const fileRef = useRef<HTMLInputElement>(null);\n  const chatEndRef = useRef<HTMLDivElement>(null);\n  useEffect(()=>{ try { const saved=localStorage.getItem("pulse-chat-history-v1"); if(saved) setChatHistory(JSON.parse(saved)); } catch {} finally { setChatHistoryLoaded(true); } },[]);\n  useEffect(()=>{ if(chatHistoryLoaded) { try { localStorage.setItem("pulse-chat-history-v1",JSON.stringify(chatHistory)); } catch {} } },[chatHistory,chatHistoryLoaded]);\n  useEffect(()=>{ chatEndRef.current?.scrollIntoView({behavior:"smooth"}); },[chatHistory,chatBusy]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  useEffect(()=>{ try { const saved=localStorage.getItem("pulse-chat-history-v1"); if(saved) setChatHistory(JSON.parse(saved)); } catch {} finally { setChatHistoryLoaded(true); } },[]);
+  useEffect(()=>{ if(chatHistoryLoaded) { try { localStorage.setItem("pulse-chat-history-v1",JSON.stringify(chatHistory)); } catch {} } },[chatHistory,chatHistoryLoaded]);
+  useEffect(()=>{ chatEndRef.current?.scrollIntoView({behavior:"smooth"}); },[chatHistory,chatBusy]);
 
   const minDate = useMemo(()=>rows.reduce((m,r)=>r.date<m?r.date:m, rows[0]?.date ?? new Date()),[rows]);
   const maxDate = useMemo(()=>rows.reduce((m,r)=>r.date>m?r.date:m, rows[0]?.date ?? new Date()),[rows]);
@@ -93,7 +103,8 @@ export default function Home() {
     if(range==="30 days") cutoff.setDate(cutoff.getDate()-30);
     if(range==="90 days") cutoff.setDate(cutoff.getDate()-90);
     if(range==="6 months") cutoff.setMonth(cutoff.getMonth()-6);
-    return rows.filter(r=>r.date>=cutoff && (category==="All categories" || r.category===category) &&
+    if(range==="12 months") cutoff.setMonth(cutoff.getMonth()-12);
+    return rows.filter(r=>(range==="All time" || r.date>=cutoff) && (category==="All categories" || r.category===category) &&
       (!search || [r.id,r.customer,r.product,r.city].join(" ").toLowerCase().includes(search.toLowerCase())));
   },[rows,range,category,search,maxDate]);
   const totalSales = filtered.reduce((a,r)=>a+r.sales,0);
@@ -143,6 +154,29 @@ export default function Home() {
   }
 
 
+  const chatAnalysis = useMemo(()=>{
+    const summarize = (key:"category"|"product"|"customer"|"city"|"month") => {
+      const groups = new Map<string,{sales:number;units:number;orders:Set<string>;customers:Set<string>}>();
+      filtered.forEach(r=>{
+        const name = key==="month" ? r.date.toLocaleString("en-US",{month:"short",year:"numeric"}) : String(r[key] || "Unspecified");
+        const value = groups.get(name) || {sales:0,units:0,orders:new Set<string>(),customers:new Set<string>()};
+        value.sales += r.sales; value.units += r.qty; value.orders.add(r.id); value.customers.add(r.customer);
+        groups.set(name,value);
+      });
+      return [...groups.entries()].map(([name,v])=>({name,sales:Number(v.sales.toFixed(2)),units:v.units,orders:v.orders.size,customers:v.customers.size})).sort((a,b)=>b.sales-a.sales);
+    };
+    return {
+      records:filtered.length,
+      distinct_orders:new Set(filtered.map(r=>r.id)).size,
+      distinct_customers:new Set(filtered.map(r=>r.customer)).size,
+      distinct_products:new Set(filtered.map(r=>r.product)).size,
+      total_sales:Number(filtered.reduce((a,r)=>a+r.sales,0).toFixed(2)),
+      total_units:filtered.reduce((a,r)=>a+r.qty,0),
+      total_cost:Number(filtered.reduce((a,r)=>a+r.cost,0).toFixed(2)),
+      groups:{category:summarize("category"),product:summarize("product"),customer:summarize("customer"),city:summarize("city"),month:summarize("month")}
+    };
+  },[filtered]);
+
   const chatChartData = useMemo(()=>{
     if(!chatChart) return [];
     const keyMap:any={category:"category",product:"product",customer:"customer",city:"city",month:"month"};
@@ -163,8 +197,8 @@ export default function Home() {
     setChatHistory(prev=>[...prev,userMsg]);setChatInput("");setChatBusy(true);setChatChart(null);
     try {
       const response=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-        question:q,rows:filtered.slice(0,1500).map(r=>({order_id:r.id,order_date:r.date.toISOString().slice(0,10),customer:r.customer,city:r.city,category:r.category,product:r.product,quantity:r.qty,sales:r.sales,cost:r.cost,status:r.status})),
-        dataset,history:chatHistory.slice(-8).map(m=>({role:m.role,content:m.content}))
+        question:q,rows:filtered.slice(0,100).map(r=>({order_id:r.id,order_date:r.date.toISOString().slice(0,10),customer:r.customer,city:r.city,category:r.category,product:r.product,quantity:r.qty,sales:r.sales,cost:r.cost,status:r.status})),
+        analysis:chatAnalysis,dataset,history:chatHistory.slice(-8).map(m=>({role:m.role,content:m.content}))
       })});
       const data=await response.json(); if(!response.ok) throw new Error(data.error||"The assistant could not answer this question.");
       const assistantMsg={id:Date.now()+1,role:"assistant",content:data.answer,createdAt:new Date().toISOString(),chart:data.chart||null,insight:data.insight||""};
@@ -173,7 +207,8 @@ export default function Home() {
       setChatHistory(prev=>[...prev,{id:Date.now()+2,role:"assistant",content:e.message||"Something went wrong.",createdAt:new Date().toISOString()}]);
     } finally {setChatBusy(false);}
   }
-\n  function exportRows() {
+
+  function exportRows() {
     const csv=["Order,Date,Customer,City,Category,Product,Units,Sales,Status",...filtered.map(r=>[r.id,r.date.toISOString().slice(0,10),r.customer,r.city,r.category,r.product,r.qty,r.sales,r.status].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(","))].join("\n");
     const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));const a=document.createElement("a");a.href=url;a.download="pulse_filtered_analysis.csv";a.click();URL.revokeObjectURL(url);
   }
@@ -196,7 +231,7 @@ export default function Home() {
           <div className="heading-actions"><button className="secondary-btn" onClick={()=>fileRef.current?.click()}><Upload size={15}/> Upload data</button><input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,.json" hidden onChange={e=>handleUpload(e.target.files?.[0])}/><button className="primary-btn" onClick={exportRows}><Download size={15}/> Export view</button></div>
         </div>
         {notice&&<div className="notice"><span>{notice}</span><button onClick={()=>setNotice("")}><X size={14}/></button></div>}
-        <div className="toolbar"><div className="dataset-label"><span className="file-icon"><FileSpreadsheet size={16}/></span><span><b>{dataset}</b><small>{rows.length.toLocaleString()} rows · {categories.length} categories</small></span><span className="connected">● Connected</span></div><div className="toolbar-right"><span className="muted-label"><CalendarDays size={14}/> Period</span><select value={range} onChange={e=>setRange(e.target.value)}><option>12 months</option><option>6 months</option><option>90 days</option><option>30 days</option></select><select value={category} onChange={e=>setCategory(e.target.value)}><option>All categories</option>{categories.map(c=><option key={c}>{c}</option>)}</select><button className="filter-btn"><Filter size={15}/> Filters</button></div></div>
+        <div className="toolbar"><div className="dataset-label"><span className="file-icon"><FileSpreadsheet size={16}/></span><span><b>{dataset}</b><small>{rows.length.toLocaleString()} rows · {categories.length} categories</small></span><span className="connected">● Connected</span></div><div className="toolbar-right"><span className="muted-label"><CalendarDays size={14}/> Period</span><select value={range} onChange={e=>setRange(e.target.value)}><option>All time</option><option>12 months</option><option>6 months</option><option>90 days</option><option>30 days</option></select><select value={category} onChange={e=>setCategory(e.target.value)}><option>All categories</option>{categories.map(c=><option key={c}>{c}</option>)}</select><button className="filter-btn"><Filter size={15}/> Filters</button></div></div>
         <div className="section-line"><span>PERFORMANCE SNAPSHOT</span><span className="updated">Updated just now <span>·</span> Live filters</span></div>
         <div className="kpi-grid">
           <Kpi title="Total sales" value={shortMoney(totalSales)} change="+12.8%" positive note="vs. previous period" icon={Wallet} tint="violet" spark={[24,32,28,42,37,55,49,68,63,78]}/>
@@ -242,7 +277,8 @@ export default function Home() {
         <div className="chat-footer"><History size={12}/> Conversations are saved in this browser for later reference.</div>
       </aside>
     </div>}
-\n  </main>;
+
+  </main>;
 }
 
 function Kpi({title,value,change,positive,note,icon:Icon,tint,spark}:{title:string,value:string,change:string,positive:boolean,note:string,icon:any,tint:string,spark:number[]}) {
