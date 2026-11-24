@@ -9,7 +9,20 @@ import streamlit as st
 from config import DATABASE_PATH
 
 st.set_page_config(page_title="E-Commerce Sales Tracker", page_icon="🛒", layout="wide")
-st.title("E-Commerce Sales Tracker")
+st.title("E-Commerce Analytics")
+st.caption("A business intelligence workspace for exploring sales, products, customers, and data quality.")
+
+st.markdown("""
+<style>
+.block-container {padding-top: 1.7rem; padding-bottom: 3rem; max-width: 1500px;}
+[data-testid="stMetric"] {background: linear-gradient(135deg, rgba(49, 92, 150, .13), rgba(49, 92, 150, .035)); border: 1px solid rgba(120,140,170,.22); padding: 16px 18px; border-radius: 14px;}
+[data-testid="stTabs"] button {font-weight: 600; padding-top: 12px; padding-bottom: 12px;}
+[data-testid="stSidebar"] {border-right: 1px solid rgba(120,140,170,.18);}
+h1 {letter-spacing: -1.2px;}
+div[data-testid="stDataFrame"] {border: 1px solid rgba(120,140,170,.2); border-radius: 12px;}
+</style>
+""", unsafe_allow_html=True)
+
 st.write(
     "A simple workspace for exploring orders, products, customers, and stock. "
     "You do not need SQL or data-analysis experience to use it."
@@ -67,7 +80,7 @@ def normalize_uploads(uploaded):
             raise ValueError(f"Missing required {name} table.")
         frame = frame.copy()
         frame.columns = [str(col).strip().lower().replace(" ", "_") for col in frame.columns]
-        missing = required[name] - set(frame.columns)
+        if name == "orders" and "sample_order_date" not in frame.columns and "order_date" in frame.columns:\n            frame = frame.rename(columns={"order_date": "sample_order_date"})\n        missing = required[name] - set(frame.columns)
         if missing:
             raise ValueError(f"{name}: missing required columns: {', '.join(sorted(missing))}")
         cleaned[name] = frame
@@ -187,7 +200,7 @@ orders["sample_order_date"] = pd.to_datetime(orders["sample_order_date"])
 low = orders["sample_order_date"].min().date()
 high = orders["sample_order_date"].max().date()
 
-st.sidebar.header("Find what you need")
+st.sidebar.header("Explore the data")
 date_range = st.sidebar.date_input(
     "Sample date range", value=(low, high), min_value=low, max_value=high,
     help="These dates are generated for demonstration; they are not actual purchase dates."
@@ -247,12 +260,12 @@ def currency(value: float) -> str:
 
 st.subheader("At a glance")
 k1, k2, k3, k4 = st.columns(4)
-k1.metric("Sample gross sales", currency(revenue), help="Item price multiplied by quantity, before cart-level discounts. Not profit.")
-k2.metric("Orders", f"{order_count:,}", help="Number of sample carts remaining after your filters.")
+k1.metric(sales_label, currency(revenue), help="Sales total from the selected orders. This is not profit unless costs are included.")
+k2.metric("Orders", f"{order_count:,}", help="Number of orders remaining after your filters.")
 k3.metric("Units", f"{units:,}", help="Total item quantity across the filtered carts.")
-k4.metric("Average order", currency(aov), help="Sample gross sales divided by filtered order count.")
+k4.metric("Average order value", currency(aov), help="Sales total divided by filtered order count.")
 st.caption(
-    f"Showing {order_count:,} of {len(orders):,} sample orders · "
+    f"Showing {order_count:,} of {len(orders):,} orders · "
     f"{len(filtered_items):,} product lines · {start} to {end}"
 )
 
@@ -265,21 +278,21 @@ overview_tab, products_tab, customers_tab, orders_tab, guide_tab = st.tabs(
 )
 
 with overview_tab:
-    st.subheader("How are sample sales changing?")
-    st.caption("Each point is the total sample order value assigned to that week.")
+    st.subheader("Sales performance")
+    st.caption("Weekly sales total for the selected orders." if not is_sample else "Each point is sample order value assigned to a generated week.")
     weekly = (
         filtered.set_index("sample_order_date")["total_amount"]
         .resample("W").sum().rename("sample_sales").reset_index()
     )
     chart = px.line(
         weekly, x="sample_order_date", y="sample_sales", markers=True,
-        labels={"sample_order_date": "Generated sample week", "sample_sales": "Sample gross sales"},
+        labels={"sample_order_date": "Week", "sample_sales": "Sales total"},
     )
     st.plotly_chart(chart, use_container_width=True)
 
     left, right = st.columns(2)
     with left:
-        st.subheader("Which categories have the most sample sales?")
+        st.subheader("Sales by category")
         category_sales = (
             filtered_items.merge(
                 products[["product_id", "category"]], on="product_id", how="left"
@@ -297,7 +310,7 @@ with overview_tab:
         else:
             st.info("No product lines match the selected filters.")
     with right:
-        st.subheader("Discounts shown on sample carts")
+        st.subheader("Order discount summary")
         st.metric("Difference before and after cart discount", currency(discount_savings))
         st.caption(
             "This is the sum of sample cart totals minus sample discounted totals. "
@@ -305,7 +318,7 @@ with overview_tab:
         )
 
 with products_tab:
-    st.subheader("Products people may want to look at")
+    st.subheader("Product performance")
     product_summary = (
         filtered_items.groupby("product_id", as_index=False)
         .agg(units_sold=("quantity", "sum"), sample_sales=("line_total", "sum"),
@@ -317,7 +330,7 @@ with products_tab:
         st.info("No products match the selected filters.")
     else:
         st.markdown("**Top products**")
-        st.caption("Ranked by sample item sales within the selected orders.")
+        st.caption("Ranked by item sales within the selected orders.")
         st.plotly_chart(
             px.bar(
                 product_summary.head(10).sort_values("sample_sales"),
@@ -351,7 +364,7 @@ with products_tab:
         )
 
 with customers_tab:
-    st.subheader("Who placed the sample orders?")
+    st.subheader("Customer performance")
     customer_summary = (
         filtered.groupby("customer_id", as_index=False)
         .agg(order_count=("order_id", "nunique"),
@@ -360,7 +373,7 @@ with customers_tab:
         .merge(customers, on="customer_id", how="left")
         .sort_values("sample_sales", ascending=False)
     )
-    st.caption("Customer totals reflect only the orders currently selected, not all-time customer value.")
+    st.caption("Customer totals reflect only the orders currently selected.")
     st.dataframe(
         customer_summary[["customer_name", "city", "order_count", "units", "sample_sales"]],
         use_container_width=True, hide_index=True,
@@ -378,7 +391,7 @@ with customers_tab:
 
 with orders_tab:
     st.subheader("Find and review orders")
-    st.caption("One row represents one sample cart. The order amount is calculated from item prices and quantities.")
+    st.caption("One row represents one order in the selected dataset.")
     display_orders = filtered.sort_values("sample_order_date", ascending=False).copy()
     st.dataframe(
         display_orders,
@@ -396,7 +409,7 @@ with orders_tab:
     )
 
 with guide_tab:
-    st.subheader("Plain-language metric guide")
+    st.subheader("Metric guide")
     st.markdown(
         """
         | Term | What it means | What it does not tell you |
