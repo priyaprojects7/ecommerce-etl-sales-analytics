@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import {
   Activity, ArrowDownRight, ArrowUpRight, Bell, Boxes, BriefcaseBusiness, CalendarDays,
   ChevronDown, ChevronRight, CircleHelp, Command, Download, FileSpreadsheet, Filter,
   LayoutDashboard, LifeBuoy, Menu, Package, PanelLeftClose, Plus, Search, Settings2,
-  ShoppingBag, Sparkles, Target, TrendingUp, Upload, Users, Wallet, X, Zap
+  ShoppingBag, Sparkles, Target, TrendingUp, Upload, Users, Wallet, X, Zap, Bot, Send, MessageSquareText, History, Trash2, Bookmark, ChevronUp, PanelRightClose
 } from "lucide-react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, Pie,
@@ -81,10 +81,10 @@ export default function Home() {
   const [category,setCategory] = useState("All categories");
   const [search,setSearch] = useState("");
   const [notice,setNotice] = useState("");
-  const [sidebarOpen,setSidebarOpen] = useState(true);
+  const [sidebarOpen,setSidebarOpen] = useState(true);\n  const [chatOpen,setChatOpen] = useState(false);\n  const [chatInput,setChatInput] = useState("");\n  const [chatBusy,setChatBusy] = useState(false);\n  const [chatHistory,setChatHistory] = useState<any[]>([]);\n  const [chatChart,setChatChart] = useState<any>(null);
   const [whatIf,setWhatIf] = useState(8);
   const [metric,setMetric] = useState("Sales");
-  const fileRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);\n  const chatEndRef = useRef<HTMLDivElement>(null);\n  useEffect(()=>{ try { const saved=localStorage.getItem("pulse-chat-history-v1"); if(saved) setChatHistory(JSON.parse(saved)); } catch {} },[]);\n  useEffect(()=>{ try { localStorage.setItem("pulse-chat-history-v1",JSON.stringify(chatHistory)); } catch {} },[chatHistory]);\n  useEffect(()=>{ chatEndRef.current?.scrollIntoView({behavior:"smooth"}); },[chatHistory,chatBusy]);
 
   const minDate = useMemo(()=>rows.reduce((m,r)=>r.date<m?r.date:m, rows[0]?.date ?? new Date()),[rows]);
   const maxDate = useMemo(()=>rows.reduce((m,r)=>r.date>m?r.date:m, rows[0]?.date ?? new Date()),[rows]);
@@ -142,7 +142,38 @@ export default function Home() {
     } catch(e:any) {setNotice(e.message||"Could not read this file.");}
   }
 
-  function exportRows() {
+
+  const chatChartData = useMemo(()=>{
+    if(!chatChart) return [];
+    const keyMap:any={category:"category",product:"product",customer:"customer",city:"city",month:"month"};
+    const group=keyMap[chatChart.groupBy]||"category";
+    const m=new Map<string,{name:string,value:number,orders:Set<string>,units:number}>();
+    filtered.forEach(r=>{
+      const name=group==="month"?r.date.toLocaleString("en-US",{month:"short",year:"numeric"}):String((r as any)[group]||"Unspecified");
+      const v=m.get(name)||{name,value:0,orders:new Set<string>(),units:0};
+      v.value+=chatChart.metric==="orders"?0:chatChart.metric==="units"?r.qty:r.sales;
+      v.orders.add(r.id);v.units+=r.qty;m.set(name,v);
+    });
+    return [...m.values()].map(v=>({name:v.name,value:chatChart.metric==="orders"?v.orders.size:chatChart.metric==="average_order_value"?(v.orders.size?v.value/v.orders.size:0):v.value})).sort((a,b)=>b.value-a.value).slice(0,10);
+  },[chatChart,filtered]);
+
+  async function askPulse(question?:string) {
+    const q=(question??chatInput).trim(); if(!q||chatBusy) return;
+    const userMsg={id:Date.now(),role:"user",content:q,createdAt:new Date().toISOString()};
+    setChatHistory(prev=>[...prev,userMsg]);setChatInput("");setChatBusy(true);setChatChart(null);
+    try {
+      const response=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+        question:q,rows:filtered.slice(0,1500).map(r=>({order_id:r.id,order_date:r.date.toISOString().slice(0,10),customer:r.customer,city:r.city,category:r.category,product:r.product,quantity:r.qty,sales:r.sales,cost:r.cost,status:r.status})),
+        dataset,history:chatHistory.slice(-8).map(m=>({role:m.role,content:m.content}))
+      })});
+      const data=await response.json(); if(!response.ok) throw new Error(data.error||"The assistant could not answer this question.");
+      const assistantMsg={id:Date.now()+1,role:"assistant",content:data.answer,createdAt:new Date().toISOString(),chart:data.chart||null,insight:data.insight||""};
+      setChatHistory(prev=>[...prev,assistantMsg]); if(data.chart) setChatChart(data.chart);
+    } catch(e:any) {
+      setChatHistory(prev=>[...prev,{id:Date.now()+2,role:"assistant",content:e.message||"Something went wrong.",createdAt:new Date().toISOString()}]);
+    } finally {setChatBusy(false);}
+  }
+\n  function exportRows() {
     const csv=["Order,Date,Customer,City,Category,Product,Units,Sales,Status",...filtered.map(r=>[r.id,r.date.toISOString().slice(0,10),r.customer,r.city,r.category,r.product,r.qty,r.sales,r.status].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(","))].join("\n");
     const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));const a=document.createElement("a");a.href=url;a.download="pulse_filtered_analysis.csv";a.click();URL.revokeObjectURL(url);
   }
@@ -157,7 +188,7 @@ export default function Home() {
     <section className="main-area">
       <header className="topbar">
         <div className="top-left"><button className="icon-btn" onClick={()=>setSidebarOpen(!sidebarOpen)}><PanelLeftClose size={18}/></button><span className="crumb">Workspace</span><ChevronRight size={14}/><b>{active}</b></div>
-        <div className="top-actions"><div className="searchbox"><Search size={15}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search orders, products, customers..."/><kbd>⌘ K</kbd></div><button className="icon-btn"><Bell size={17}/><i/></button><button className="avatar-small">TS</button></div>
+        <div className="top-actions"><div className="searchbox"><Search size={15}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search orders, products, customers..."/><kbd>⌘ K</kbd></div><button className="chat-launch" onClick={()=>setChatOpen(true)}><Bot size={16}/> Ask PULSE</button><button className="icon-btn"><Bell size={17}/><i/></button><button className="avatar-small">TS</button></div>
       </header>
       <div className="content">
         <div className="page-heading">
@@ -191,10 +222,27 @@ export default function Home() {
           <div className="panel product-panel"><div className="panel-head"><div><div className="panel-kicker">PRODUCT PERFORMANCE</div><h2>Top-performing products</h2><p>Ranked by sales in the current selection.</p></div><button className="text-btn" onClick={()=>setActive("Products & inventory")}>View all <ChevronRight size={14}/></button></div><div className="product-list">{topProducts.slice(0,5).map((p,i)=><div className="product-row" key={p.name}><div className="product-rank">{String(i+1).padStart(2,"0")}</div><div className="product-info"><b>{p.name}</b><div className="bar-track"><div style={{width:(p.sales/Math.max(topProducts[0]?.sales||1,1)*100)+"%",background:palette[i%palette.length]}}/></div></div><div className="product-value"><b>{money(p.sales)}</b><small>{p.units} units</small></div></div>)}</div></div>
         </div>
         <div className="panel orders-panel"><div className="panel-head"><div><div className="panel-kicker">LATEST ACTIVITY</div><h2>Recent orders</h2><p>A quick look at the latest transactions in this view.</p></div><button className="secondary-btn compact" onClick={()=>setActive("Sales intelligence")}>All transactions <ChevronRight size={14}/></button></div><div className="table-wrap"><table><thead><tr><th>ORDER</th><th>DATE</th><th>CUSTOMER</th><th>LOCATION</th><th>PRODUCT</th><th>STATUS</th><th className="align-right">SALES</th></tr></thead><tbody>{recent.map((r,i)=><tr key={r.id+i}><td className="order-id">{r.id}</td><td>{r.date.toLocaleDateString("en-US",{month:"short",day:"2-digit",year:"numeric"})}</td><td>{r.customer}</td><td>{r.city}</td><td>{r.product}</td><td><span className={"status "+(r.status==="Completed"?"complete":r.status==="Returned"?"returned":"pending")}>{r.status}</span></td><td className="align-right amount">{money(r.sales)}</td></tr>)}</tbody></table></div></div>
+        {chatChart&&<div className="panel ai-chart-panel"><div className="panel-head"><div><div className="panel-kicker">AI-GENERATED ANALYSIS</div><h2>{chatChart.title}</h2><p>{chatChart.description||"Built from the currently filtered dataset."}</p></div><button className="dots" onClick={()=>setChatChart(null)}><X size={14}/></button></div><div className="ai-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={chatChartData} margin={{top:10,right:10,left:0,bottom:10}}><CartesianGrid stroke="#292d3b" vertical={false}/><XAxis dataKey="name" tick={{fill:"#a0a5b5",fontSize:10}} axisLine={false} tickLine={false}/><YAxis tick={{fill:"#858b9d",fontSize:10}} axisLine={false} tickLine={false}/><Tooltip contentStyle={{background:"#171923",border:"1px solid #343747",borderRadius:12}} formatter={(v:any)=>chatChart.metric==="orders"?v:money(v)}/><Bar dataKey="value" fill="#9b8afb" radius={[6,6,0,0]}/></BarChart></ResponsiveContainer></div><button className="text-btn" onClick={()=>setChatOpen(true)}>Ask a follow-up <ChevronRight size={14}/></button></div>}
         <footer><span>© 2026 PULSE Intelligence</span><span>Numbers are based on the selected dataset and filters. Verify source definitions before making business decisions.</span></footer>
       </div>
     </section>
-  </main>;
+  
+    {chatOpen&&<div className="chat-overlay">
+      <div className="chat-backdrop" onClick={()=>setChatOpen(false)}></div>
+      <aside className="chat-drawer">
+        <div className="chat-header"><div className="chat-brand"><div className="chat-brand-icon"><Bot size={18}/></div><div><b>Ask PULSE</b><small>AI data analyst · {dataset}</small></div></div><div className="chat-header-actions"><button title="Clear chat history" onClick={()=>{if(confirm("Clear all saved PULSE conversations from this browser?")){setChatHistory([]);setChatChart(null);}}}><Trash2 size={16}/></button><button onClick={()=>setChatOpen(false)}><X size={18}/></button></div></div>
+        <div className="chat-context"><Sparkles size={14}/> Answers use your current filters and uploaded dataset.</div>
+        <div className="chat-messages">
+          {chatHistory.length===0&&<div className="chat-welcome"><div className="chat-welcome-icon"><Sparkles size={23}/></div><h3>What would you like to understand?</h3><p>Ask about performance, compare groups, find patterns, or request a chart. I'll explain the result and show the data behind it.</p><div className="prompt-chips">{["Which category drives the most sales?","Show monthly sales trend","Compare sales by city","Which products need attention?","Explain average order value"].map(q=><button key={q} onClick={()=>askPulse(q)}>{q}<ChevronRight size={13}/></button>)}</div></div>}
+          {chatHistory.map((m:any)=><div className={"chat-message "+m.role} key={m.id}><div className="message-avatar">{m.role==="assistant"?<Bot size={15}/>:<span>TS</span>}</div><div className="message-body"><div className="message-role">{m.role==="assistant"?"PULSE":"YOU"} <span>{new Date(m.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span></div><p>{m.content}</p>{m.chart&&<button className="inline-chart-btn" onClick={()=>{setChatChart(m.chart);setChatOpen(false);}}> <TrendingUp size={14}/> Show chart on dashboard</button>}</div></div>)}
+          {chatBusy&&<div className="chat-message assistant"><div className="message-avatar"><Bot size={15}/></div><div className="typing"><i/><i/><i/></div></div>}
+          <div ref={chatEndRef}/>
+        </div>
+        <div className="chat-composer"><textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askPulse();}}} placeholder="Ask anything about your business data..." rows={2}/><div className="composer-bottom"><span>Enter to send · Shift + Enter for a new line</span><button disabled={!chatInput.trim()||chatBusy} onClick={()=>askPulse()}><Send size={15}/></button></div></div>
+        <div className="chat-footer"><History size={12}/> Conversations are saved in this browser for later reference.</div>
+      </aside>
+    </div>}
+\n  </main>;
 }
 
 function Kpi({title,value,change,positive,note,icon:Icon,tint,spark}:{title:string,value:string,change:string,positive:boolean,note:string,icon:any,tint:string,spark:number[]}) {
