@@ -80,7 +80,9 @@ def normalize_uploads(uploaded):
             raise ValueError(f"Missing required {name} table.")
         frame = frame.copy()
         frame.columns = [str(col).strip().lower().replace(" ", "_") for col in frame.columns]
-        if name == "orders" and "sample_order_date" not in frame.columns and "order_date" in frame.columns:\n            frame = frame.rename(columns={"order_date": "sample_order_date"})\n        missing = required[name] - set(frame.columns)
+        if name == "orders" and "sample_order_date" not in frame.columns and "order_date" in frame.columns:
+            frame = frame.rename(columns={"order_date": "sample_order_date"})
+        missing = required[name] - set(frame.columns)
         if missing:
             raise ValueError(f"{name}: missing required columns: {', '.join(sorted(missing))}")
         cleaned[name] = frame
