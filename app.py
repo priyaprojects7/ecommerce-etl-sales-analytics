@@ -162,8 +162,8 @@ except Exception as exc:
     st.sidebar.error(f"Upload could not be used: {exc}")
     st.stop()
 
-if not Path(DATABASE_PATH).exists():
-    st.warning("Warehouse not found. Run `python -m src.pipeline` in the project terminal first.")
+if uploaded_tables is None and not Path(DATABASE_PATH).exists():
+    st.warning("Warehouse not found. Run `python -m src.pipeline` or upload your own dataset in the sidebar.")
     st.stop()
 
 if uploaded_tables is None:
