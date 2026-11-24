@@ -67,6 +67,52 @@ def read_table(file):
     raise ValueError("Upload a CSV or Excel file.")
 
 
+def normalize_single_csv(frame):
+    """Turn a flat order-line CSV into the four related tables used by the dashboard."""
+    frame = frame.copy()
+    frame.columns = [str(col).strip().lower().replace(" ", "_") for col in frame.columns]
+    aliases = {
+        "order_date": "sample_order_date",
+        "product_name": "title",
+        "product_title": "title",
+        "item_quantity": "quantity",
+        "unit_cost": "unit_price",
+        "customer": "customer_name",
+        "name": "customer_name",
+        "location": "city",
+    }
+    frame = frame.rename(columns={k: v for k, v in aliases.items() if k in frame.columns and v not in frame.columns})
+    required = {"order_id", "customer_id", "sample_order_date", "product_id", "quantity", "unit_price", "title", "category"}
+    missing = required - set(frame.columns)
+    if missing:
+        raise ValueError(
+            "A single CSV must contain order-line columns: " + ", ".join(sorted(required)) +
+            ". Missing: " + ", ".join(sorted(missing)) +
+            ". For separate files, use the four CSV uploaders below."
+        )
+    if "line_total" not in frame.columns:
+        frame["line_total"] = pd.to_numeric(frame["quantity"], errors="coerce") * pd.to_numeric(frame["unit_price"], errors="coerce")
+    if "total_amount" not in frame.columns:
+        frame["total_amount"] = frame.groupby("order_id")["line_total"].transform("sum")
+    if "price" not in frame.columns:
+        frame["price"] = frame["unit_price"]
+    if "stock" not in frame.columns:
+        frame["stock"] = 0
+    if "rating" not in frame.columns:
+        frame["rating"] = 0
+    if "customer_name" not in frame.columns:
+        frame["customer_name"] = frame["customer_id"].astype(str)
+    if "city" not in frame.columns:
+        frame["city"] = "Unknown"
+    if "brand" not in frame.columns:
+        frame["brand"] = "Unknown"
+    orders = frame[["order_id", "customer_id", "sample_order_date", "total_amount"]].drop_duplicates("order_id").copy()
+    items = frame[["order_id", "product_id", "quantity", "unit_price", "line_total"]].copy()
+    products = frame[["product_id", "title", "category", "price", "stock", "rating", "brand"]].drop_duplicates("product_id").copy()
+    customers = frame[["customer_id", "customer_name", "city"]].drop_duplicates("customer_id").copy()
+    return {"orders": orders, "order_items": items, "products": products, "customers": customers}
+
+
 def normalize_uploads(uploaded):
     """Validate uploaded tables and standardize the columns used by this app."""
     required = {
@@ -163,11 +209,14 @@ st.sidebar.download_button(
 )
 
 workbook = st.sidebar.file_uploader("Excel workbook (.xlsx)", type=["xlsx"], key="workbook_upload")
-with st.sidebar.expander("Or upload four CSV files"):
-    orders_file = st.file_uploader("Orders CSV", type=["csv"], key="orders_upload")
-    items_file = st.file_uploader("Order items CSV", type=["csv"], key="items_upload")
-    products_file = st.file_uploader("Products CSV", type=["csv"], key="products_upload")
-    customers_file = st.file_uploader("Customers CSV", type=["csv"], key="customers_upload")
+st.sidebar.markdown("**Or upload one combined CSV**")
+single_csv = st.sidebar.file_uploader("Combined order-line CSV", type=["csv"], key="single_csv_upload")
+st.sidebar.caption("One row per product in an order. Required columns: order_id, customer_id, order_date, product_id, quantity, unit_price, title, category.")
+st.sidebar.markdown("**Or upload four separate CSV files**")
+orders_file = st.sidebar.file_uploader("Orders CSV", type=["csv"], key="orders_upload")
+items_file = st.sidebar.file_uploader("Order items CSV", type=["csv"], key="items_upload")
+products_file = st.sidebar.file_uploader("Products CSV", type=["csv"], key="products_upload")
+customers_file = st.sidebar.file_uploader("Customers CSV", type=["csv"], key="customers_upload")
 
 uploaded_tables = None
 try:
@@ -180,6 +229,8 @@ try:
         uploaded_tables = {
             name: pd.read_excel(excel, sheet_name=name) for name in required_sheets
         }
+    elif single_csv is not None:
+        uploaded_tables = normalize_single_csv(read_table(single_csv))
     elif any(file is not None for file in (orders_file, items_file, products_file, customers_file)):
         uploaded_tables = {
             "orders": read_table(orders_file),
