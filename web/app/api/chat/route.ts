@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const question = String(body.question || "").trim();
-    const rows = Array.isArray(body.rows) ? body.rows.slice(0, 1500) : [];
+    const rows = Array.isArray(body.rows) ? body.rows.slice(0, 250) : [];
     if (!question) return NextResponse.json({ error: "Enter a question first." }, { status: 400 });
     if (!rows.length) return NextResponse.json({ error: "There are no rows in the current filters. Adjust the filters or upload data first." }, { status: 400 });
 
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       }, { status: 503 });
     }
 
-    const system = `You are PULSE, a careful business data analyst. Answer only from the supplied dataset context. Never invent missing fields, values, causes, or business facts. The data context may be a filtered sample (maximum 1500 rows); say so when relevant. If a requested metric cannot be computed from available fields, explain which field is missing. Distinguish sales from profit. Only estimate gross profit if cost values are actually present and meaningful. Return valid JSON only with this exact shape:
+    const system = `You are PULSE, a careful business data analyst. Answer only from the supplied dataset context. Never invent missing fields, values, causes, or business facts. The data context may be a filtered sample (maximum 250 rows); say so when relevant. If a requested metric cannot be computed from available fields, explain which field is missing. Distinguish sales from profit. Only estimate gross profit if cost values are actually present and meaningful. Return valid JSON only with this exact shape:
 {"answer":"plain language response with specific numbers and caveats","insight":"one short practical observation or limitation","chart":null}
 If a chart would materially help, chart must be {"title":"short chart title","description":"what the chart shows and any limitation","groupBy":"category|product|customer|city|month","metric":"sales|orders|units|average_order_value"}. Choose only these allowed values. Use chart=null if the question is explanatory or a chart would not help. For questions asking for top/bottom items, choose the appropriate group and metric; chart renders top 10. Do not include markdown fences.`;
 
