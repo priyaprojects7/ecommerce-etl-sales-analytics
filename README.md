@@ -20,7 +20,7 @@ streamlit run app.py
 
 On Windows PowerShell, activate with .venv\Scripts\Activate.ps1.
 
-## Pipeline
+## Dashboard features\n\n- Executive overview with sales, order, unit, and average-order metrics\n- Comparison Lab for two date windows and category performance\n- Product Intelligence with product rankings and stock watch\n- Customer Intelligence with customer-level order and sales summaries\n- Sales Trends with weekly history and a basic four-week linear projection when uploaded data contains enough genuine history\n- Business Insights calculated from the selected data\n- Order Explorer with filters and CSV exports\n- Data Quality checks for missing cells and duplicate rows\n- Upload your own data using the downloadable Excel template or four CSV files\n\nThe Excel workbook must contain `orders`, `order_items`, `products`, and `customers` sheets. The `orders` sheet accepts `order_date` (recommended) or `sample_order_date`. Uploaded files stay in the current Streamlit session. Forecasts are disabled for the built-in demo data because its dates are generated.\n\n## Pipeline
 
 1. Extract products, users, and carts with API pagination.
 2. Preserve raw JSON responses.
