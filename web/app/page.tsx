@@ -168,9 +168,9 @@ export default function Home() {
   const profit = filtered.reduce((a,r)=>a+(r.sales-r.cost),0);
   const categories = [...new Set(rows.map(r=>r.category))].sort();
   const monthly = useMemo(()=>{
-    const grouped = new Map<string,{month:string,sales:number,orders:Set<string>}>();
-    filtered.forEach(r=>{const month=r.date.toLocaleString("en-US",{month:"short",year:"2-digit"});if(!grouped.has(month))grouped.set(month,{month,sales:0,orders:new Set()});const v=grouped.get(month)!;v.sales+=r.sales;v.orders.add(r.id);});
-    return [...grouped.values()].map(v=>({month:v.month,sales:Math.round(v.sales),orders:v.orders.size})).sort((a,b)=>new Date("1 "+a.month).getTime()-new Date("1 "+b.month).getTime());
+    const grouped = new Map<string,{month:string,sales:number,orders:Set<string>,sortKey:number}>();
+    filtered.filter(r=>r.date.getTime()>0).forEach(r=>{const sortKey=new Date(r.date.getFullYear(),r.date.getMonth(),1).getTime();const month=r.date.toLocaleString("en-US",{month:"short",year:"2-digit"});if(!grouped.has(month))grouped.set(month,{month,sales:0,orders:new Set(),sortKey});const v=grouped.get(month)!;v.sales+=r.sales;v.orders.add(r.id);});
+    return [...grouped.values()].map(v=>({month:v.month,sales:Math.round(v.sales),orders:v.orders.size,sortKey:v.sortKey})).sort((a,b)=>a.sortKey-b.sortKey);
   },[filtered]);
   const categoryData = useMemo(()=>{
     const m=new Map<string,number>();filtered.forEach(r=>m.set(r.category,(m.get(r.category)||0)+r.sales));
