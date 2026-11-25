@@ -66,14 +66,23 @@ If the user requests a chart, chart must be {"title":"short chart title","descri
     const raw = result.choices?.[0]?.message?.content;
     if (!raw) return NextResponse.json({ error: "PULSE did not receive an answer. Try asking in a different way." }, { status: 502 });
     const parsed = JSON.parse(raw);
+    const q = question.toLowerCase();
+    const requestedChartType = /\bscatter\b/.test(q) ? "scatter" : /\barea\b/.test(q) ? "area" : /\bline\b/.test(q) ? "line" : /\bpie\b|\bdonut\b/.test(q) ? "pie" : /\bbar\b/.test(q) ? "bar" : null;
+    const chartRequested = Boolean(requestedChartType || /\b(chart|graph|plot|visuali[sz]e)\b/.test(q));
+    const inferredGroup = /\b(month|monthly|over time|trend|time series)\b/.test(q) ? "month" : /\b(city|cities|location|geograph)\b/.test(q) ? "city" : /\bcustomer\b/.test(q) ? "customer" : /\bproduct\b/.test(q) ? "product" : "category";
+    const inferredMetric = /\b(order volume|number of orders|orders)\b/.test(q) ? "orders" : /\b(units|quantity|volume sold)\b/.test(q) ? "units" : /\baverage order value|aov\b/.test(q) ? "average_order_value" : "sales";
+    const chartSource = parsed.chart && allowedGroups.has(parsed.chart.groupBy) && allowedMetrics.has(parsed.chart.metric) && allowedChartTypes.has(parsed.chart.chartType) ? parsed.chart : null;
+    const requestedType = requestedChartType || (chartSource ? chartSource.chartType : "bar");
     let chart = null;
-    if (parsed.chart && allowedGroups.has(parsed.chart.groupBy) && allowedMetrics.has(parsed.chart.metric) && allowedChartTypes.has(parsed.chart.chartType)) {
+    if (chartRequested) {
+      const scatterRequested = requestedType === "scatter";
+      const groupBy = scatterRequested ? "product" : (chartSource?.groupBy || inferredGroup);
+      const metric = scatterRequested ? "units" : (chartSource?.metric || inferredMetric);
+      const metricLabel = metric === "orders" ? "Order volume" : metric === "units" ? "Units sold" : metric === "average_order_value" ? "Average order value" : "Revenue";
       chart = {
-        title: String(parsed.chart.title || "Your requested analysis").slice(0, 100),
-        description: String(parsed.chart.description || "").slice(0, 240),
-        chartType: parsed.chart.chartType,
-        groupBy: parsed.chart.groupBy,
-        metric: parsed.chart.metric
+        title: String(chartSource?.title || (scatterRequested ? "Average selling price vs. units sold" : groupBy === "month" ? (metric === "orders" ? "Monthly order volume" : "Monthly sales trend") : metricLabel + " by " + groupBy).trim()).slice(0, 100),
+        description: String(chartSource?.description || (scatterRequested ? "Each point represents a product. Average selling price is calculated as product revenue divided by units sold." : groupBy === "month" ? "Monthly values are calculated from the date and order fields and displayed in chronological order." : "Calculated from the current filtered dataset.")).slice(0, 240),
+        chartType: requestedType, groupBy, metric, orientation: /\bhorizontal\b/.test(q) ? "horizontal" : "vertical"
       };
     }
     return NextResponse.json({
