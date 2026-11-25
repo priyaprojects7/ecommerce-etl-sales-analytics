@@ -83,7 +83,7 @@ function normalizeRow(raw: RowData, i: number): Order | null {
     id:String(find("order_id","invoice id","invoice_id","transaction id","id") ?? "UPLOAD-"+(i+1)),
     date:date && !isNaN(date.getTime()) ? date : new Date(),
     customer:String(find("customer_name","customer","customer id","customer_id","customer type") ?? "Unspecified"),
-    city:String(find("city","customer_city","shipping_city","shipping_address_city","billing_city","delivery_city","town","location","branch") ?? "Unspecified"),
+    city:String(find("city","customer_city","customer_location","shipping_city","shipping_location","shipping_address_city","billing_city","delivery_city","delivery_location","town","location","branch") ?? "Unspecified"),
     category:String(find("category","product line","product category") ?? "Uncategorized"),
     product:String(find("product","product_name","title","description") ?? "Unspecified product"),
     qty, sales, cost:num(find("cost","cogs","product_cost"))*qty,
