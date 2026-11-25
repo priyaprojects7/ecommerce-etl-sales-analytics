@@ -40,7 +40,7 @@ function demoRows(): Order[] {
 function buildGeneratedChartData(chart: any, rows: Order[]) {
   let chartRows = chart.productName ? rows.filter(r=>r.product===chart.productName) : rows;
   if (chart.dateWindowMonths && chartRows.length) {
-    const latest = Math.max(...chartRows.map(r=>r.date.getTime()));
+    const latest = chart.dateAnchor ? Number(chart.dateAnchor) : Math.max(...chartRows.map(r=>r.date.getTime()));
     const cutoff = new Date(latest); cutoff.setMonth(cutoff.getMonth()-Number(chart.dateWindowMonths));
     chartRows = chartRows.filter(r=>r.date>=cutoff);
   }
@@ -212,6 +212,8 @@ export default function Home() {
     };
     return {
       records:filtered.length,
+      date_min:filtered.length?Math.min(...filtered.map(r=>r.date.getTime())):null,
+      date_max:filtered.length?Math.max(...filtered.map(r=>r.date.getTime())):null,
       distinct_orders:new Set(filtered.map(r=>r.id)).size,
       distinct_customers:new Set(filtered.map(r=>r.customer)).size,
       distinct_products:new Set(filtered.map(r=>r.product)).size,
