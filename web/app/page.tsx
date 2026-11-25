@@ -89,8 +89,15 @@ function normalizeRow(raw: RowData, i: number): Order | null {
     return Number.isFinite(n)?n:0;
   };
   const dateRaw = find("order_date","orderdate","date","sample_order_date","invoice_date","invoice date","transaction_date","transaction date","created_at","created_date","purchase_date","date_created");
-  const parsedDate = dateRaw ? new Date(dateRaw) : null;
-  const date = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : new Date(0);
+  let parsedDate: Date | null = null;
+  if (typeof dateRaw === "number" && dateRaw > 20000 && dateRaw < 80000) {
+    const parts=XLSX.SSF.parse_date_code(dateRaw);
+    if(parts) parsedDate=new Date(parts.y,parts.m-1,parts.d,parts.H,parts.M,parts.S);
+  } else if (dateRaw) {
+    const candidate=new Date(dateRaw);
+    if(!isNaN(candidate.getTime())) parsedDate=candidate;
+  }
+  const date = parsedDate || new Date(0);
   const qty = Math.max(0,num(find("quantity","qty","units_sold","units","item_quantity")) || 1);
   const totalRaw = find("total_amount","sales","total","total_sales","line_total","revenue","total_revenue","order_total","net_sales","amount","subtotal","extended_price");
   const unitPriceRaw = find("unit_price","selling_price","sale_price","item_price","price");
