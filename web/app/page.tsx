@@ -201,7 +201,11 @@ export default function Home() {
       const normalized=raw.map(normalizeRow).filter(Boolean) as Order[];
       if(!normalized.length) throw new Error("I couldn't find a sales or total amount column. Try a file with columns such as Sales, Total, Revenue or total_amount.");
       setRows(normalized);setDataset(file.name);setRange("All time");setCategory("All categories");setSearch("");
-      setNotice("Loaded "+normalized.length.toLocaleString()+" records. Some metrics depend on which columns your file contains.");
+      const missingDates=normalized.filter(r=>r.date.getTime()===0).length;
+      const missingCities=normalized.filter(r=>r.city==="Unspecified").length;
+      const missingStatuses=normalized.every(r=>r.status==="Recorded");
+      const warnings=[missingDates?missingDates+" rows have no recognized date":"",missingCities===normalized.length?"no city/location column was recognized":"",missingStatuses?"no order-status column was recognized":""].filter(Boolean);
+      setNotice("Loaded "+normalized.length.toLocaleString()+" records."+ (warnings.length?" Data checks: "+warnings.join("; ")+".":" Required fields were recognized."));
     } catch(e:any) {setNotice(e.message||"Could not read this file.");}
   }
 
