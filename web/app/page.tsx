@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, Pie,
-  PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis
+  LineChart, PieChart, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis
 } from "recharts";
 
 type RowData = Record<string, any>;
