@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const allowedGroups = new Set(["category", "product", "customer", "city", "month"]);
-const allowedMetrics = new Set(["sales", "orders", "units", "average_order_value"]);
+const allowedMetrics = new Set(["sales", "orders", "units", "average_order_value"]);\nconst allowedChartTypes = new Set(["bar", "line", "area", "scatter", "pie"]);
 
 export async function POST(request: NextRequest) {
   try {
@@ -66,7 +66,7 @@ If a chart would materially help, chart must be {"title":"short chart title","de
     if (!raw) return NextResponse.json({ error: "PULSE did not receive an answer. Try asking in a different way." }, { status: 502 });
     const parsed = JSON.parse(raw);
     let chart = null;
-    if (parsed.chart && allowedGroups.has(parsed.chart.groupBy) && allowedMetrics.has(parsed.chart.metric)) {
+    if (parsed.chart && allowedGroups.has(parsed.chart.groupBy) && allowedMetrics.has(parsed.chart.metric) && allowedChartTypes.has(parsed.chart.chartType)) {
       chart = {
         title: String(parsed.chart.title || "Your requested analysis").slice(0, 100),
         description: String(parsed.chart.description || "").slice(0, 240),
