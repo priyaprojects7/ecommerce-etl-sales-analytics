@@ -104,12 +104,16 @@ If the user requests a chart, chart must be {"title":"short chart title","descri
     }
     const modelAnswer = String(parsed.answer || "I couldn't form a reliable answer from these fields.");
     const hasGeneratedChart = Boolean(chart || charts.length);
-    const answer = hasGeneratedChart && /cannot|can't|unable|not available|not provided|not possible|does not provide|does not contain|lack(s|ing)? the necessary|without a breakdown/i.test(modelAnswer)
+    const modelRefusedChart = /cannot|can't|unable|not available|not provided|not possible|does not provide|does not contain|lack(s|ing)? the necessary|without a breakdown/i.test(modelAnswer);
+    const answer = hasGeneratedChart && modelRefusedChart
       ? charts.length ? "I've generated five separate monthly performance charts, one for each of the top five products, using the available date, sales and product fields." : "I've generated the requested chart using the available fields in your uploaded dataset. The chart values are calculated from the current filters."
       : modelAnswer;
+    const insight = hasGeneratedChart && modelRefusedChart
+      ? charts.length ? "Each chart shows monthly revenue for one of the five highest-revenue products. The five charts use the same date window for comparison." : String(chart?.description || "Chart values are calculated from the current filtered dataset.")
+      : String(parsed.insight || "");
     return NextResponse.json({
       answer,
-      insight: String(parsed.insight || ""),
+      insight,
       chart: charts.length ? null : chart,
       charts
     });
