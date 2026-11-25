@@ -20,6 +20,8 @@ export async function POST(request: NextRequest) {
       dataset: String(body.dataset || "Uploaded dataset"),
       scope: "Exact aggregates calculated across every record in the current dashboard filters. The rows array is only a small illustrative sample and must not be used to calculate totals or rankings.",
       records: Number(analysis.records),
+      date_min: analysis.date_min ?? null,
+      date_max: analysis.date_max ?? null,
       distinct_orders: Number(analysis.distinct_orders),
       distinct_customers: Number(analysis.distinct_customers),
       distinct_products: Number(analysis.distinct_products),
@@ -99,6 +101,7 @@ If the user requests a chart, chart must be {"title":"short chart title","descri
         metric: "sales",
         productName: String(product.name),
         dateWindowMonths,
+        dateAnchor: analysis.date_max ?? null,
         orientation: /\bhorizontal\b/.test(q) ? "horizontal" : "vertical"
       }));
     }
