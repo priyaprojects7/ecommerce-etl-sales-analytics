@@ -192,20 +192,6 @@ export default function Home() {
     };
   },[filtered]);
 
-  const chatChartData = useMemo(()=>{
-    if(!chatChart) return [];
-    const keyMap:any={category:"category",product:"product",customer:"customer",city:"city",month:"month"};
-    const group=keyMap[chatChart.groupBy]||"category";
-    const m=new Map<string,{name:string,value:number,orders:Set<string>,units:number}>();
-    filtered.forEach(r=>{
-      const name=group==="month"?r.date.toLocaleString("en-US",{month:"short",year:"numeric"}):String((r as any)[group]||"Unspecified");
-      const v=m.get(name)||{name,value:0,orders:new Set<string>(),units:0};
-      v.value+=chatChart.metric==="orders"?0:chatChart.metric==="units"?r.qty:r.sales;
-      v.orders.add(r.id);v.units+=r.qty;m.set(name,v);
-    });
-    return [...m.values()].map(v=>({name:v.name,value:chatChart.metric==="orders"?v.orders.size:chatChart.metric==="average_order_value"?(v.orders.size?v.value/v.orders.size:0):v.value})).sort((a,b)=>b.value-a.value).slice(0,10);
-  },[chatChart,filtered]);
-
   async function askPulse(question?:string) {
     const q=(question??chatInput).trim(); if(!q||chatBusy) return;
     const userMsg={id:Date.now(),role:"user",content:q,createdAt:new Date().toISOString()};
