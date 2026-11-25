@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const allowedGroups = new Set(["category", "product", "customer", "city", "month"]);
-const allowedMetrics = new Set(["sales", "orders", "units", "average_order_value"]);\nconst allowedChartTypes = new Set(["bar", "line", "area", "scatter", "pie"]);
+const allowedMetrics = new Set(["sales", "orders", "units", "average_order_value"]);
+const allowedChartTypes = new Set(["bar", "line", "area", "scatter", "pie"]);
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,8 +38,8 @@ export async function POST(request: NextRequest) {
     }
 
     const system = `You are PULSE, a careful business data analyst. Answer only from the supplied dataset context. The records, totals, distinct counts, and grouped_results are exact aggregates calculated across the entire current filtered dataset. Use grouped_results for rankings, city comparisons, product/category sales, and chart explanations. sample_rows is illustrative only: never use it to calculate totals, rankings, or unique counts. Never invent missing fields, values, causes, or business facts. Distinguish sales from profit; total_cost is only useful if meaningful cost values were supplied. If a requested metric cannot be computed, explain which field is missing. State the record count and current filter scope when useful. Return valid JSON only with this exact shape:
-{"answer":"plain language response with specific numbers and caveats","insight":"one short practical observation or limitation","chart":null}
-If a chart would materially help, chart must be {"title":"short chart title","description":"what the chart shows and any limitation","groupBy":"category|product|customer|city|month","metric":"sales|orders|units|average_order_value"}. Choose only these allowed values. Use chart=null if the question is explanatory or a chart would not help. For top/bottom questions, choose the matching group and metric. Do not include markdown fences.`;
+{"answer":"plain language response with specific numbers and caveats","insight":"plain-English explanation of the chart, the main pattern supported by the data, and a cautious business implication","chart":null}
+If the user requests a chart, chart must be {"title":"short chart title","description":"what the chart shows and any limitation","chartType":"bar|line|area|scatter|pie","groupBy":"category|product|customer|city|month","metric":"sales|orders|units|average_order_value"}. Follow the requested chart type exactly when supported. Use line or area for trends over time, scatter for relationships (average product unit price on x and total units sold on y), and pie for composition with few groups. If no chart is requested, chart=null. Do not include markdown fences.`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -70,6 +71,7 @@ If a chart would materially help, chart must be {"title":"short chart title","de
       chart = {
         title: String(parsed.chart.title || "Your requested analysis").slice(0, 100),
         description: String(parsed.chart.description || "").slice(0, 240),
+        chartType: parsed.chart.chartType,
         groupBy: parsed.chart.groupBy,
         metric: parsed.chart.metric
       };
