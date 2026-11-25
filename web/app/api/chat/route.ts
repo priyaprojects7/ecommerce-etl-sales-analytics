@@ -69,10 +69,14 @@ If the user requests a chart, chart must be {"title":"short chart title","descri
     const q = question.toLowerCase();
     const requestedChartType = /\bscatter\b/.test(q) ? "scatter" : /\barea\b/.test(q) ? "area" : /\bline\b/.test(q) ? "line" : /\bpie\b|\bdonut\b/.test(q) ? "pie" : /\bbar\b/.test(q) ? "bar" : null;
     const chartRequested = Boolean(requestedChartType || /\b(chart|graph|plot|visuali[sz]e)\b/.test(q));
-    const inferredGroup = /\b(month|monthly|over time|trend|time series)\b/.test(q) ? "month" : /\b(city|cities|location|geograph)\b/.test(q) ? "city" : /\bcustomer\b/.test(q) ? "customer" : /\bproduct\b/.test(q) ? "product" : "category";
+    const inferredGroup = /\b(month|monthly|over time|trend|time series|last \d+ months?|past \d+ months?)\b/.test(q) ? "month" : /\b(city|cities|location|geograph)\b/.test(q) ? "city" : /\bcustomer\b/.test(q) ? "customer" : /\bproduct\b/.test(q) ? "product" : "category";
     const inferredMetric = /\b(order volume|number of orders|orders)\b/.test(q) ? "orders" : /\b(units|quantity|volume sold)\b/.test(q) ? "units" : /\baverage order value|aov\b/.test(q) ? "average_order_value" : "sales";
     const chartSource = parsed.chart && allowedGroups.has(parsed.chart.groupBy) && allowedMetrics.has(parsed.chart.metric) && allowedChartTypes.has(parsed.chart.chartType) ? parsed.chart : null;
     const requestedType = requestedChartType || (chartSource ? chartSource.chartType : "bar");
+    const wantsOnePerProduct = /\b(each|one per|one for each)\b/.test(q) && /\b(products?|product)\b/.test(q) && /\b(top|highest|best)\b/.test(q);
+    const monthWindowMatch = q.match(/(?:last|past)\s+(\d+)\s+months?/);
+    const dateWindowMonths = monthWindowMatch ? Math.max(1,Math.min(24,Number(monthWindowMatch[1]))) : null;
+    let charts: any[] = [];
     let chart = null;
     if (chartRequested) {
       const scatterRequested = requestedType === "scatter";
@@ -85,14 +89,29 @@ If the user requests a chart, chart must be {"title":"short chart title","descri
         chartType: requestedType, groupBy, metric, orientation: /\bhorizontal\b/.test(q) ? "horizontal" : "vertical"
       };
     }
+    if (chartRequested && wantsOnePerProduct) {
+      const products = Array.isArray(analysis.groups?.product) ? analysis.groups.product.slice().sort((a:any,b:any)=>Number(b.sales)-Number(a.sales)).slice(0,5) : [];
+      charts = products.map((product:any)=>({
+        title: String(product.name + " · Monthly performance").slice(0,100),
+        description: dateWindowMonths ? "Monthly revenue for this product over the last " + dateWindowMonths + " months in the available dataset." : "Monthly revenue for this product, calculated from the uploaded records.",
+        chartType: requestedType === "bar" ? "bar" : requestedType,
+        groupBy: "month",
+        metric: "sales",
+        productName: String(product.name),
+        dateWindowMonths,
+        orientation: /\bhorizontal\b/.test(q) ? "horizontal" : "vertical"
+      }));
+    }
     const modelAnswer = String(parsed.answer || "I couldn't form a reliable answer from these fields.");
-    const answer = chart && /cannot|can't|unable|not available|not provided|not possible|does not provide/i.test(modelAnswer)
-      ? "I've generated the requested chart using the available fields in your uploaded dataset. The chart values are calculated from the current filters."
+    const hasGeneratedChart = Boolean(chart || charts.length);
+    const answer = hasGeneratedChart && /cannot|can't|unable|not available|not provided|not possible|does not provide|does not contain|lack(s|ing)? the necessary|without a breakdown/i.test(modelAnswer)
+      ? charts.length ? "I've generated five separate monthly performance charts, one for each of the top five products, using the available date, sales and product fields." : "I've generated the requested chart using the available fields in your uploaded dataset. The chart values are calculated from the current filters."
       : modelAnswer;
     return NextResponse.json({
       answer,
       insight: String(parsed.insight || ""),
-      chart
+      chart: charts.length ? null : chart,
+      charts
     });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || "Unable to process this question." }, { status: 500 });
