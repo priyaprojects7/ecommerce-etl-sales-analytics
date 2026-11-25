@@ -50,6 +50,7 @@ function buildGeneratedChartData(chart: any, rows: Order[]) {
     return [...grouped.entries()].map(([name,v])=>({name,x:v.units?v.sales/v.units:0,y:v.units})).filter(v=>v.x>0&&v.y>0).slice(0,100);
   }
   const key = chart.groupBy || "category";
+  if (key==="month") chartRows=chartRows.filter(r=>r.date.getTime()>0);
   const grouped = new Map<string,{sales:number;units:number;orders:Set<string>;sortKey:number}>();
   chartRows.forEach(r=>{
     const sortKey=key==="month"?new Date(r.date.getFullYear(),r.date.getMonth(),1).getTime():0;
