@@ -74,26 +74,44 @@ const nav = [
 ];
 
 function normalizeRow(raw: RowData, i: number): Order | null {
+  const normalizedKeys = Object.keys(raw).reduce((acc,k)=>{acc[k.toLowerCase().replace(/[^a-z0-9]/g,"")]=k;return acc;},{} as Record<string,string>);
   const find = (...keys: string[]) => {
-    const wanted = keys.map(k=>k.toLowerCase().replace(/[^a-z0-9]/g,""));
-    const key = Object.keys(raw).find(k=>wanted.includes(k.toLowerCase().replace(/[^a-z0-9]/g,"")));
-    return key ? raw[key] : undefined;
+    for (const candidate of keys) {
+      const actual=normalizedKeys[candidate.toLowerCase().replace(/[^a-z0-9]/g,"")];
+      if(actual!==undefined && raw[actual]!=="" && raw[actual]!==null && raw[actual]!==undefined) return raw[actual];
+    }
+    return undefined;
   };
-  const num = (v: any) => Number(String(v ?? "").replace(/[$,]/g,"")) || 0;
-  const dateRaw = find("order_date","date","sample_order_date","invoice date","transaction date");
-  const date = dateRaw ? new Date(dateRaw) : null;
-  const sales = num(find("total_amount","sales","total","total sales","line_total","revenue","amount"));
-  const qty = num(find("quantity","qty","units sold")) || 1;
-  if (!sales && !find("total_amount","sales","total","total sales","line_total","revenue","amount")) return null;
+  const num = (v: any) => {
+    const s=String(v??"").trim();
+    if(!s) return 0;
+    const n=Number(s.replace(/[$,()%]/g,"").replace(/^\((.*)\)$/,"-$1"));
+    return Number.isFinite(n)?n:0;
+  };
+  const dateRaw = find("order_date","orderdate","date","sample_order_date","invoice_date","invoice date","transaction_date","transaction date","created_at","created_date","purchase_date","date_created");
+  const parsedDate = dateRaw ? new Date(dateRaw) : null;
+  const date = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : new Date(0);
+  const qty = Math.max(0,num(find("quantity","qty","units_sold","units","item_quantity")) || 1);
+  const totalRaw = find("total_amount","sales","total","total_sales","line_total","revenue","total_revenue","order_total","net_sales","amount","subtotal","extended_price");
+  const unitPriceRaw = find("unit_price","selling_price","sale_price","item_price","price");
+  const sales = totalRaw!==undefined ? num(totalRaw) : unitPriceRaw!==undefined ? num(unitPriceRaw)*qty : 0;
+  if (totalRaw===undefined && unitPriceRaw===undefined) return null;
+  const costTotal=find("total_cost","total_cogs","cost_of_goods_sold","cogs");
+  const unitCost=find("unit_cost","product_cost","cost_per_unit");
+  const cost=costTotal!==undefined?num(costTotal):unitCost!==undefined?num(unitCost)*qty:0;
+  const orderId=find("order_id","orderid","invoice_id","invoice id","transaction_id","transaction id","id");
+  const customerId=find("customer_id","customerid","customer_name","customer","customer type","buyer_name","buyer");
+  const city=find("city","customer_city","customer_location","shipping_city","shipping_location","shipping_address_city","billing_city","billing_location","delivery_city","delivery_location","destination_city","town","location","branch");
+  const status=find("status","order_status","orderstatus","fulfillment_status","delivery_status","transaction_status","shipping_status","payment_status");
   return {
-    id:String(find("order_id","invoice id","invoice_id","transaction id","id") ?? "UPLOAD-"+(i+1)),
-    date:date && !isNaN(date.getTime()) ? date : new Date(),
-    customer:String(find("customer_name","customer","customer id","customer_id","customer type") ?? "Unspecified"),
-    city:String(find("city","customer_city","customer_location","shipping_city","shipping_location","shipping_address_city","billing_city","delivery_city","delivery_location","town","location","branch") ?? "Unspecified"),
-    category:String(find("category","product line","product category") ?? "Uncategorized"),
-    product:String(find("product","product_name","title","description") ?? "Unspecified product"),
-    qty, sales, cost:num(find("cost","cogs","product_cost"))*qty,
-    status:String(find("status","order_status","orderstatus","fulfillment_status","delivery_status","transaction_status","shipping_status") ?? "Recorded")
+    id:String(orderId ?? "UPLOAD-"+(i+1)),
+    date,
+    customer:String(customerId ?? "Unspecified"),
+    city:String(city ?? "Unspecified"),
+    category:String(find("category","product_line","product category","product_category","department") ?? "Uncategorized"),
+    product:String(find("product","product_name","item_name","title","description","sku_name") ?? "Unspecified product"),
+    qty, sales, cost,
+    status:String(status ?? "Recorded")
   };
 }
 
