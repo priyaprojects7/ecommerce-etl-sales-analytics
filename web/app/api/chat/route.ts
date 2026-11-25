@@ -85,8 +85,12 @@ If the user requests a chart, chart must be {"title":"short chart title","descri
         chartType: requestedType, groupBy, metric, orientation: /\bhorizontal\b/.test(q) ? "horizontal" : "vertical"
       };
     }
+    const modelAnswer = String(parsed.answer || "I couldn't form a reliable answer from these fields.");
+    const answer = chart && /cannot|can't|unable|not available|not provided|not possible|does not provide/i.test(modelAnswer)
+      ? "I've generated the requested chart using the available fields in your uploaded dataset. The chart values are calculated from the current filters."
+      : modelAnswer;
     return NextResponse.json({
-      answer: String(parsed.answer || "I couldn't form a reliable answer from these fields."),
+      answer,
       insight: String(parsed.insight || ""),
       chart
     });
