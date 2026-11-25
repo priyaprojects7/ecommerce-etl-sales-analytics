@@ -86,7 +86,8 @@ function normalizeRow(raw: RowData, i: number): Order | null {
   const num = (v: any) => {
     const s=String(v??"").trim();
     if(!s) return 0;
-    const n=Number(s.replace(/[$,()%]/g,"").replace(/^\((.*)\)$/,"-$1"));
+    const accounting=s.startsWith("(")&&s.endsWith(")")?"-"+s.slice(1,-1):s;
+    const n=Number(accounting.replace(/[$,%]/g,""));
     return Number.isFinite(n)?n:0;
   };
   const dateRaw = find("order_date","orderdate","date","sample_order_date","invoice_date","invoice date","transaction_date","transaction date","created_at","created_date","purchase_date","date_created");
