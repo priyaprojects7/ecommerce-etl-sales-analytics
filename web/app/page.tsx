@@ -266,10 +266,10 @@ export default function Home() {
         {filtersOpen&&<div className="filter-popover"><label>Order status<select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option>All statuses</option>{[...new Set(rows.map(r=>r.status))].sort().map(v=><option key={v}>{v}</option>)}</select></label><button className="secondary-btn compact" onClick={()=>{setStatusFilter("All statuses");setCategory("All categories");setSearch("");setRange("All time");}}>Clear filters</button><button className="text-btn" onClick={()=>setFiltersOpen(false)}>Done</button></div>}
         <div className="section-line"><span>PERFORMANCE SNAPSHOT</span><span className="updated">Updated just now <span>·</span> Live filters</span></div>
         <div className="kpi-grid">
-          <Kpi title="Total sales" value={shortMoney(totalSales)} change="+12.8%" positive note="vs. previous period" icon={Wallet} tint="violet" spark={[24,32,28,42,37,55,49,68,63,78]}/>
-          <Kpi title="Orders" value={totalOrders.toLocaleString()} change="+8.4%" positive note="vs. previous period" icon={ShoppingBag} tint="mint" spark={[34,28,38,36,50,44,58,55,70,78]}/>
-          <Kpi title="Average order value" value={money(aov)} change="+3.2%" positive note="vs. previous period" icon={Target} tint="amber" spark={[60,54,62,58,70,67,72,76,73,84]}/>
-          <Kpi title={hasCost?"Gross profit":"Units sold"} value={hasCost?shortMoney(profit):units.toLocaleString()} change={hasCost?"Margin data":"Across selected orders"} positive={hasCost} note={hasCost?"Estimated from supplied costs":"Quantity purchased"} icon={hasCost?TrendingUp:Boxes} tint="blue" spark={[22,31,29,44,40,52,48,63,67,75]}/>
+          <Kpi title="Total sales" value={shortMoney(totalSales)} change="" positive={false} note="Current selection · comparison unavailable" icon={Wallet} tint="violet" spark={[]}/>
+          <Kpi title="Orders" value={totalOrders.toLocaleString()} change="" positive={false} note="Unique orders in current selection" icon={ShoppingBag} tint="mint" spark={[]}/>
+          <Kpi title="Average order value" value={money(aov)} change="" positive={false} note="Sales divided by unique orders" icon={Target} tint="amber" spark={[]}/>
+          <Kpi title={hasCost?"Gross profit":"Units sold"} value={hasCost?shortMoney(profit):units.toLocaleString()} change="" positive={false} note={hasCost?"Estimated from supplied costs":"Quantity purchased"} icon={hasCost?TrendingUp:Boxes} tint="blue" spark={[]}/>
         </div>
         <div className="grid-main">
           <div className="panel revenue-panel">
@@ -314,5 +314,5 @@ export default function Home() {
 }
 
 function Kpi({title,value,change,positive,note,icon:Icon,tint,spark}:{title:string,value:string,change:string,positive:boolean,note:string,icon:any,tint:string,spark:number[]}) {
-  return <div className="kpi-card"><div className="kpi-top"><span>{title}</span><div className={"kpi-icon "+tint}><Icon size={17}/></div></div><div className="kpi-value">{value}</div><div className="kpi-bottom"><span className={positive?"positive":"neutral"}>{positive?<ArrowUpRight size={14}/>:<ArrowDownRight size={14}/>} {change}</span><small>{note}</small><div className="spark">{spark.map((v,i)=><i key={i} style={{height:v+"%"}}/>)}</div></div></div>;
+  return <div className="kpi-card"><div className="kpi-top"><span>{title}</span><div className={"kpi-icon "+tint}><Icon size={17}/></div></div><div className="kpi-value">{value}</div><div className="kpi-bottom"><span className={positive?"positive":"neutral"}>{change&&<><ArrowUpRight size={14}/> {change}</>}</span><small>{note}</small>{spark.length>0&&<div className="spark">{spark.map((v,i)=><i key={i} style={{height:v+"%"}}/>)}</div>}</div></div>;
 }
